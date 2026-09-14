@@ -59,27 +59,53 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
      * in the template always does.
      */
     public record Template(ResourceLocation id, int trackZ, int trackY, Optional<BlockState> foundation, int foundationDepth,
-                           boolean clear) {
+                           boolean clear, int weight) {
         static final Codec<Template> CODEC = RecordCodecBuilder.create(i -> i.group(
                 ResourceLocation.CODEC.fieldOf("id").forGetter(Template::id),
                 Codec.intRange(0, 256).fieldOf("track_z").forGetter(Template::trackZ),
                 Codec.intRange(0, 64).optionalFieldOf("track_y", 1).forGetter(Template::trackY),
                 BlockState.CODEC.optionalFieldOf("foundation").forGetter(Template::foundation),
                 Codec.intRange(0, 64).optionalFieldOf("foundation_depth", 12).forGetter(Template::foundationDepth),
-                Codec.BOOL.optionalFieldOf("clear", true).forGetter(Template::clear)
+                Codec.BOOL.optionalFieldOf("clear", true).forGetter(Template::clear),
+                Codec.intRange(0, 1_000_000).optionalFieldOf("weight", 1).forGetter(Template::weight)
         ).apply(i, Template::new));
     }
 
+    /**
+     * Platform or building. {@code template} and each of {@code variants} (more templates, same shape as
+     * template, all as long as the station) are picked per station by weight; a template id also stands for its
+     * numbered files "&lt;id&gt;_1", "&lt;id&gt;_2", ... (RAILWAYS.md §A8.10).
+     */
     public record Look(int width, int gap, int clearance, BlockState platform, Optional<BlockState> edge,
-                       Optional<Template> template) {
+                       Optional<Template> template, List<Template> variants) {
         static final MapCodec<Look> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
                 Codec.intRange(1, 8).optionalFieldOf("width", 3).forGetter(Look::width),
                 Codec.intRange(1, 8).optionalFieldOf("gap", 2).forGetter(Look::gap),
                 Codec.intRange(2, 12).optionalFieldOf("clearance", 4).forGetter(Look::clearance),
                 BlockState.CODEC.optionalFieldOf("platform", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Look::platform),
                 BlockState.CODEC.optionalFieldOf("edge").forGetter(Look::edge),
-                Template.CODEC.optionalFieldOf("template").forGetter(Look::template)
+                Template.CODEC.optionalFieldOf("template").forGetter(Look::template),
+                Template.CODEC.listOf().optionalFieldOf("variants", List.of()).forGetter(Look::variants)
         ).apply(i, Look::new));
+
+        /** The template for a uniform roll in [0, 1), by weight among template and variants; empty for a plain platform. */
+        public Optional<Template> pick(double roll) {
+            List<Template> all = new java.util.ArrayList<>();
+            template.ifPresent(all::add);
+            all.addAll(variants);
+            int total = all.stream().mapToInt(t -> Math.max(0, t.weight())).sum();
+            if (all.isEmpty() || total <= 0) {
+                return template;
+            }
+            double r = roll * total;
+            for (Template t : all) {
+                r -= Math.max(0, t.weight());
+                if (r < 0) {
+                    return Optional.of(t);
+                }
+            }
+            return Optional.of(all.get(all.size() - 1));
+        }
     }
 
     public record Service(boolean stationBlock, String direction, String name, Optional<ResourceLocation> train) {

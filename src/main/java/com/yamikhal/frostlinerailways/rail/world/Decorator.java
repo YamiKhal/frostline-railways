@@ -243,10 +243,12 @@ public final class Decorator {
     private static void station(WorldGenLevel level, ChunkPos chunk, RailContext ctx, StationPlanner.Site site, Envelope envelope,
                                 BlockPos.MutableBlockPos pos) {
         RailStation def = site.def();
-        RailTemplates.Structure structure = def.look().template()
-                .map(t -> RailTemplates.structure(level.getServer(), t.id())).orElse(null);
+        long salt = site.id().hashCode();
+        java.util.Optional<RailStation.Template> chosen = def.look().pick(ctx.random(salt, site.zCentre(), 29));
+        ResourceLocation file = chosen.map(t -> RailTemplates.pick(level.getServer(), t.id(), ctx.random(salt, site.zCentre(), 31))).orElse(null);
+        RailTemplates.Structure structure = file == null ? null : RailTemplates.structure(level.getServer(), file);
         if (structure != null) {
-            RailStation.Template spec = def.look().template().get();
+            RailStation.Template spec = chosen.get();
             // station templates run from the site's north end, lower template z outward on the site's side
             TemplatePlacer.place(level, chunk, structure, site.trackX(), site.bedY(), spec.trackZ(), spec.trackY(),
                     site.zNorth(), 1, site.sign(), spec.clear(), spec.foundation(), spec.foundationDepth(), false, envelope, pos);

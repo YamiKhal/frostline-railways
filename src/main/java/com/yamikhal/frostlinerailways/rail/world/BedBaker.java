@@ -16,23 +16,31 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
- * Shapes the terrain under and around the track in one chunk (RAILWAYS.md §A3.2, §A8.5, §A8.8), using the
- * row's kind and style from {@link RailContext}:
+ * Shapes the terrain under and around the track in one chunk (RAILWAYS.md §A3.2, §A8.5, §A8.8–§A8.10), using
+ * the row's kind and style from {@link RailContext}:
  *
- *   OPEN    air clearance blocks above the track; a gap of at most maxFill filled; ballast on top
+ *   OPEN    air clearance blocks above the track; the gap below filled; ballast on top
  *   CUT     the ground above the track is cut away down to the track; ballast
  *   TUNNEL  a tube of the style's tunnel half width and height; the style's lining on its walls and
  *           ceiling; at a portal row the style's portal block instead; ballast floor
- *   BRIDGE  the style's deck under the track, railing at the deck's edge, piers every pierSpacing (railing
- *           and piers left out where a bridge structure stands)
+ *   BRIDGE  the style's deck under the track, one block wider than the train each side, railing on that
+ *           outer row, piers every pierSpacing (railing and piers left out where a bridge structure stands)
  *
- * With clearAboveTrack, outside tunnels, every bed column of this chunk is cleared above the track up to
- * the surface (cut walls over the track, trees, hanging leaves), and loose blocks — leaves, logs, plants,
- * snow, ice — are cleared up to the surface in clearExtraWidth more columns each side.
+ * Blending, on OPEN and CUT rows (bed.berm_reach, bed.cut_slope_reach, bed.slope_step):
+ *
+ *   berm    beside the ballast, where the ground is lower than the bed, an embankment falls away
+ *           slope_step blocks per block outward, built from the column's own surface block (top) and the
+ *           block under it (inside) — grass over dirt, snow over stone — or the style's fill
+ *   slope   beyond the bed, where the ground is higher than the track, the cut side is cut back rising
+ *           slope_step blocks per block outward, and the column's own surface block is put on the new top
+ *
+ * With clearAboveTrack, outside tunnels, every bed column of the chunk is cleared above the track to at least
+ * clearHeight (or the surface if higher); loose blocks — leaves, logs, plants, snow, ice — are cleared as high
+ * in clearExtraWidth more columns each side.
  *
  * Only this chunk's columns are shaped. Columns up to MARGIN blocks outside it (inside the 3x3 feature
- * region) only have loose blocks cleared, so trees of neighbours decorated later cannot hang over the
- * line. Nothing further than MARGIN from the chunk is touched: WorldGenRegion only allows neighbours.
+ * region) only have loose blocks cleared, so trees of neighbours decorated later cannot hang over the line.
+ * Nothing further than MARGIN from the chunk is touched: WorldGenRegion only allows neighbours.
  */
 public final class BedBaker {
 
@@ -63,10 +71,16 @@ public final class BedBaker {
             byte type = layout.type(row.piece());
             int curveExtra = type == RailLayout.BEND || type == RailLayout.SHIFT ? CURVE_EXTRA : 0;
             boolean tunnel = row.kind() == RailContext.Kind.TUNNEL;
+            boolean bridge = row.kind() == RailContext.Kind.BRIDGE;
+            boolean ground = !tunnel && !bridge;
             int tubeHalf = tunnel ? style.tunnel().halfWidth() : bed.halfWidth();
             int width = Math.max(Math.max(tubeHalf + 1, bed.halfWidth()), trainHalf + 1) + curveExtra;
+            int shoulder = bed.halfWidth() + curveExtra;
             int reach = width + (tunnel ? 0 : extra);
-            boolean bridgeStructure = row.kind() == RailContext.Kind.BRIDGE && plan.bridgeAt(z);
+            if (ground) {
+                reach = Math.max(reach, Math.max(shoulder + bed.bermReach(), width + bed.cutSlopeReach()));
+            }
+            boolean bridgeStructure = bridge && plan.bridgeAt(z);
             // a neighbour may already have built a station here: its moss, leaves and plants are not trees
             boolean station = atStation(ctx, z);
             boolean zInChunk = z >= chunk.getMinBlockZ() && z <= chunk.getMaxBlockZ();
@@ -76,18 +90,33 @@ public final class BedBaker {
                 if (x < chunk.getMinBlockX() - MARGIN || x > chunk.getMaxBlockX() + MARGIN) {
                     continue;
                 }
+                int abs = Math.abs(dx);
                 boolean inChunk = zInChunk && x >= chunk.getMinBlockX() && x <= chunk.getMaxBlockX();
-                boolean bedColumn = Math.abs(dx) <= width;
+                boolean bedColumn = abs <= width;
                 // at least clearHeight above the track, and up to the surface where that is higher
                 int top = clearAbove && !tunnel ? Math.min(maxY, Math.max(row.bedY() + clearHeight, surfaceTop(level, x, z))) : 0;
-                if (inChunk && bedColumn) {
-                    column(level, pos, x, z, dx, curveExtra, row, style, bed, bridgeStructure, trainHalf);
-                    if (clearAbove && !tunnel) {
-                        clear(level, pos, x, z, row.bedY() + 1, top, false);
+                if (inChunk) {
+                    int natural = ground && abs > shoulder ? groundY(level, pos, x, z) : 0;
+                    if (bedColumn) {
+                        column(level, pos, x, z, dx, curveExtra, row, style, bed, bridgeStructure, trainHalf);
+                        if (clearAbove && !tunnel) {
+                            clear(level, pos, x, z, row.bedY() + 1, top, false);
+                        }
+                    } else if (ground && abs - width <= bed.cutSlopeReach()) {
+                        slope(level, pos, x, z, row.bedY() + (abs - width) * bed.slopeStep(), natural, top);
                     }
-                } else if (station) {
+                    if (ground && abs > shoulder && abs - shoulder <= bed.bermReach()) {
+                        berm(level, pos, x, z, row.bedY() - 1 - (abs - shoulder) * bed.slopeStep(), natural, style);
+                    }
+                    if (!bedColumn && clearAbove && !tunnel && !station) {
+                        clear(level, pos, x, z, row.bedY(), top, true);
+                    }
                     continue;
-                } else if (clearAbove && !tunnel) {
+                }
+                if (station) {
+                    continue;
+                }
+                if (clearAbove && !tunnel) {
                     clear(level, pos, x, z, row.bedY(), top, true);
                 } else if (bedColumn) {
                     clear(level, pos, x, z, row.bedY(), row.bedY() + Math.max(bed.clearance(), style.tunnel().height()), true);
@@ -169,6 +198,44 @@ public final class BedBaker {
                 level.setBlock(pos.set(x, bedY - 1, z), edgeOrBallast(style, abs, bed), 2);
             }
         }
+    }
+
+    /** An embankment column up to bermTop over natural ground, from the column's own surface and subsurface blocks. */
+    private static void berm(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int bermTop, int natural, RailStyle style) {
+        if (bermTop <= natural) {
+            return;
+        }
+        BlockState surface = level.getBlockState(pos.set(x, natural, z));
+        if (!solidGround(level, pos, surface)) {
+            surface = style.bed().fill();
+        }
+        BlockState inner = level.getBlockState(pos.set(x, natural - 1, z));
+        if (!solidGround(level, pos, inner)) {
+            inner = surface;
+        }
+        if (solidGround(level, pos.set(x, natural, z), level.getBlockState(pos))) {
+            level.setBlock(pos, inner, 2); // the old surface is buried now
+        }
+        for (int y = natural + 1; y <= bermTop; y++) {
+            level.setBlock(pos.set(x, y, z), y == bermTop ? surface : inner, 2);
+        }
+    }
+
+    /** A cut side: everything from floor up is cleared where the ground reaches floor, and the old surface block goes on the new top. */
+    private static void slope(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int floor, int natural, int top) {
+        if (natural < floor) {
+            return;
+        }
+        BlockState surface = level.getBlockState(pos.set(x, natural, z));
+        clear(level, pos, x, z, floor, Math.max(top, natural), false);
+        BlockState below = level.getBlockState(pos.set(x, floor - 1, z));
+        if (solidGround(level, pos, surface) && solidGround(level, pos, below)) {
+            level.setBlock(pos, surface, 2);
+        }
+    }
+
+    private static boolean solidGround(WorldGenLevel level, BlockPos pos, BlockState state) {
+        return !isLoose(state) && state.getFluidState().isEmpty() && state.isCollisionShapeFullBlock(level, pos);
     }
 
     private static BlockState edgeOrBallast(RailStyle style, int abs, RailLineDef.Bed bed) {

@@ -36,6 +36,8 @@ public final class RailwaysConfig {
     private static final ForgeConfigSpec.IntValue CLEAR_EXTRA_WIDTH;
     private static final ForgeConfigSpec.BooleanValue CUT_COVERS;
     private static final ForgeConfigSpec.BooleanValue BRIDGE_STRUCTURES;
+    private static final ForgeConfigSpec.BooleanValue TUNNEL_STRUCTURES;
+    private static final ForgeConfigSpec.BooleanValue COVER_LAYER;
     private static final ForgeConfigSpec.IntValue TRAIN_HALF_WIDTH;
     private static final ForgeConfigSpec.IntValue TRAIN_HEIGHT;
     private static final ForgeConfigSpec.IntValue CLEAR_HEIGHT;
@@ -99,6 +101,10 @@ public final class RailwaysConfig {
                 .define("cutCovers", true);
         BRIDGE_STRUCTURES = b.comment("Place styles' bridge_structures (start/middle/end, or flat) on bridges.")
                 .define("bridgeStructures", true);
+        TUNNEL_STRUCTURES = b.comment("Place styles' tunnel_structures (portals at tunnel mouths, optional middles inside).")
+                .define("tunnelStructures", true);
+        COVER_LAYER = b.comment("Place styles' cover_layer (e.g. snow) on the terrain the line leaves exposed.")
+                .define("coverLayer", true);
         TRAIN_HALF_WIDTH = b.comment("Half width of the space trains drive through, from the track centre: nothing the line places",
                         "(templates, stations, additions, snow) goes within it. 2 = Create's 3 wide track plus one free block each side;",
                         "bridge decks reach one block further and railings stand outside it.")
@@ -196,6 +202,14 @@ public final class RailwaysConfig {
 
     public static boolean bridgeStructures() {
         return get(BRIDGE_STRUCTURES::get, true);
+    }
+
+    public static boolean tunnelStructures() {
+        return get(TUNNEL_STRUCTURES::get, true);
+    }
+
+    public static boolean coverLayer() {
+        return get(COVER_LAYER::get, true);
     }
 
     public static int trainHalfWidth() {

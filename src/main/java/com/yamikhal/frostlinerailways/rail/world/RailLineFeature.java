@@ -60,6 +60,7 @@ public class RailLineFeature extends Feature<NoneFeatureConfiguration> {
         BedBaker.bake(level, chunk, context);
         TrackWriter.write(level, chunk, layout);
         Decorator.decorate(level, chunk, context);
+        CoverLayer.apply(level, chunk, context);
         if (RailwaysConfig.railPerfLogging()) {
             long chunks = CHUNKS.incrementAndGet();
             long nanos = NANOS.addAndGet(System.nanoTime() - start);

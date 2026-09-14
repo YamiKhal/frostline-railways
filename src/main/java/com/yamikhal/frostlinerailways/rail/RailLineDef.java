@@ -63,20 +63,28 @@ public record RailLineDef(ResourceLocation dimension, End south, End north, Grad
     }
 
     /**
-     * Track bed: {@code halfWidth} blocks of ballast each side of the track, {@code clearance} blocks of
-     * air above it. Gaps up to {@code maxFill} are filled, deeper ones bridged with piers every
-     * {@code pierSpacing} blocks (at most {@code maxPierDepth} deep). Ground more than
-     * {@code tunnelMinCover} above the clearance is tunnelled, less is cut open.
+     * Track bed: {@code halfWidth} blocks of ballast each side of the track, {@code clearance} blocks of air
+     * above it. Rows where the track stands at least {@code bridgeMinHeight} blocks above the ground are
+     * bridges (piers every {@code pierSpacing}, at most {@code maxPierDepth} deep); lower gaps are filled. Ground
+     * more than {@code tunnelMinCover} above the tunnel is tunnelled, less is cut open. {@code maxFill} is where the
+     * profile's bridge cost starts. Blending (RAILWAYS.md §A8.10): embankments fall away from the ballast over
+     * {@code bermReach} blocks and cut sides rise over {@code cutSlopeReach} blocks, {@code slopeStep} blocks per
+     * block outward (0 reach = off).
      */
-    public record Bed(int halfWidth, int clearance, int maxFill, int tunnelMinCover, int pierSpacing, int maxPierDepth) {
-        static final Bed DEFAULT = new Bed(2, 5, 6, 6, 12, 64);
+    public record Bed(int halfWidth, int clearance, int maxFill, int tunnelMinCover, int pierSpacing, int maxPierDepth,
+                      int bridgeMinHeight, int bermReach, int cutSlopeReach, int slopeStep) {
+        static final Bed DEFAULT = new Bed(2, 5, 6, 6, 12, 64, 4, 6, 8, 1);
         static final Codec<Bed> CODEC = RecordCodecBuilder.create(i -> i.group(
                 Codec.intRange(0, 6).optionalFieldOf("half_width", DEFAULT.halfWidth()).forGetter(Bed::halfWidth),
                 Codec.intRange(3, 12).optionalFieldOf("clearance", DEFAULT.clearance()).forGetter(Bed::clearance),
                 Codec.intRange(0, 32).optionalFieldOf("max_fill", DEFAULT.maxFill()).forGetter(Bed::maxFill),
                 Codec.intRange(1, 64).optionalFieldOf("tunnel_min_cover", DEFAULT.tunnelMinCover()).forGetter(Bed::tunnelMinCover),
                 Codec.intRange(2, 64).optionalFieldOf("pier_spacing", DEFAULT.pierSpacing()).forGetter(Bed::pierSpacing),
-                Codec.intRange(1, 128).optionalFieldOf("max_pier_depth", DEFAULT.maxPierDepth()).forGetter(Bed::maxPierDepth)
+                Codec.intRange(1, 128).optionalFieldOf("max_pier_depth", DEFAULT.maxPierDepth()).forGetter(Bed::maxPierDepth),
+                Codec.intRange(1, 64).optionalFieldOf("bridge_min_height", DEFAULT.bridgeMinHeight()).forGetter(Bed::bridgeMinHeight),
+                Codec.intRange(0, 16).optionalFieldOf("berm_reach", DEFAULT.bermReach()).forGetter(Bed::bermReach),
+                Codec.intRange(0, 16).optionalFieldOf("cut_slope_reach", DEFAULT.cutSlopeReach()).forGetter(Bed::cutSlopeReach),
+                Codec.intRange(1, 8).optionalFieldOf("slope_step", DEFAULT.slopeStep()).forGetter(Bed::slopeStep)
         ).apply(i, Bed::new));
     }
 

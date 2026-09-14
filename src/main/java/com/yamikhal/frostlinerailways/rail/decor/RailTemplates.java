@@ -18,6 +18,9 @@ import org.slf4j.Logger;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -73,9 +76,63 @@ public final class RailTemplates {
     private RailTemplates() {
     }
 
+    /** Template id → the files it stands for: itself if it exists, and every "&lt;id&gt;_&lt;number&gt;". */
+    private static volatile Map<ResourceLocation, List<ResourceLocation>> numbered;
+    private static final Pattern NUMBERED = Pattern.compile("^(.*)_(\\d+)$");
+    private static final String FOLDER = "frostline_rail/template/";
+
     static void clear() {
         STRUCTURES.clear();
         TRAINS.clear();
+        numbered = null;
+    }
+
+    /**
+     * The template file to use for id: id itself or one of its numbered files "id_1", "id_2", ..., chosen by a
+     * uniform roll in [0, 1); null if there is none.
+     */
+    public static ResourceLocation pick(MinecraftServer server, ResourceLocation id, double roll) {
+        List<ResourceLocation> candidates = candidates(server, id);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(Math.min(candidates.size() - 1, (int) (roll * candidates.size())));
+    }
+
+    public static List<ResourceLocation> candidates(MinecraftServer server, ResourceLocation id) {
+        Map<ResourceLocation, List<ResourceLocation>> index = numbered;
+        if (index == null) {
+            synchronized (RailTemplates.class) {
+                if (numbered == null) {
+                    numbered = index(server);
+                }
+                index = numbered;
+            }
+        }
+        List<ResourceLocation> list = index.get(id);
+        if (list == null) {
+            LOGGER.error("[FrostlineRailways] template {} not found (no frostline_rail/template/{}.nbt or {}_<n>.nbt)", id, id.getPath(), id.getPath());
+            return List.of();
+        }
+        return list;
+    }
+
+    private static Map<ResourceLocation, List<ResourceLocation>> index(MinecraftServer server) {
+        Map<ResourceLocation, List<ResourceLocation>> map = new HashMap<>();
+        server.getResourceManager().listResources("frostline_rail/template", file -> file.getPath().endsWith(".nbt")).keySet().stream()
+                .sorted(Comparator.comparing(ResourceLocation::toString))
+                .forEach(file -> {
+                    String path = file.getPath().substring(FOLDER.length(), file.getPath().length() - ".nbt".length());
+                    ResourceLocation id = new ResourceLocation(file.getNamespace(), path);
+                    map.computeIfAbsent(id, k -> new ArrayList<>()).add(id);
+                    Matcher matcher = NUMBERED.matcher(path);
+                    if (matcher.matches()) {
+                        map.computeIfAbsent(new ResourceLocation(file.getNamespace(), matcher.group(1)), k -> new ArrayList<>()).add(id);
+                    }
+                });
+        map.replaceAll((k, v) -> List.copyOf(v));
+        LOGGER.info("[FrostlineRailways] {} template names ({} files)", map.size(), map.values().stream().filter(l -> l.size() == 1).count());
+        return Map.copyOf(map);
     }
 
     public static Structure structure(MinecraftServer server, ResourceLocation id) {

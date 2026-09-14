@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  *   kind     TUNNEL  ground at least tunnelMinCover above the style's tunnel height
  *            CUT     ground above the track
- *            BRIDGE  gap under the track deeper than maxFill
+ *            BRIDGE  track at least bed.bridge_min_height above the ground
  *            OPEN    otherwise
  *   portal   a tunnel row next to a row that is not
  *   style    the section's style (256-block sections, see {@link RailStyle})
@@ -96,7 +96,7 @@ public final class RailContext {
         if (groundTop >= bedY) {
             return Kind.CUT;
         }
-        if (bedY - 1 - groundTop > def.bed().maxFill()) {
+        if (bedY - 1 - groundTop >= def.bed().bridgeMinHeight()) {
             return Kind.BRIDGE;
         }
         return Kind.OPEN;
