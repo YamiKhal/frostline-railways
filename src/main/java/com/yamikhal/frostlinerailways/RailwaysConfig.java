@@ -29,6 +29,7 @@ public final class RailwaysConfig {
     private static final ForgeConfigSpec.BooleanValue SPAWN_ON_PLATFORM;
     private static final ForgeConfigSpec.BooleanValue STARTING_TRAIN;
     private static final ForgeConfigSpec.BooleanValue GIRDER_TRACKS;
+    private static final ForgeConfigSpec.BooleanValue GIRDER_SLOPES_ONLY;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> BIOME_RAISE;
     private static final ForgeConfigSpec.BooleanValue MINUS_ONE_IS_HIGHEST;
     private static final ForgeConfigSpec.IntValue HIGHEST_LOOKAHEAD;
@@ -78,9 +79,11 @@ public final class RailwaysConfig {
         STARTING_TRAIN = b.comment("Place and assemble the spawn station's \"train\" template once per world, when the graph is built.")
                 .define("startingTrain", true);
         GIRDER_TRACKS = b.comment("Generate track in Create's metal girder variant, as if placed with metal girders in the offhand:",
-                        "curves carry girder supports, straight and diagonal track get metal girders under both rails.",
-                        "Only affects newly generated chunks.")
+                        "slopes carry girder supports, straight track gets metal girders under both rails.",
+                        "Never on S-bends and diagonal shifts (Create's girders render broken there). Only affects newly generated chunks.")
                 .define("girderTracks", true);
+        GIRDER_SLOPES_ONLY = b.comment("With girderTracks: girders only where the track goes up or down (ramps); flat straight track stays plain.")
+                .define("girderSlopesOnly", true);
 
         b.comment("Vertical profile per biome (RAILWAYS.md A8.8). Changing these only affects new worlds",
                 "(or /frostline rail layout rebuild).").push("profile");
@@ -183,6 +186,10 @@ public final class RailwaysConfig {
 
     public static boolean girderTracks() {
         return get(GIRDER_TRACKS::get, true);
+    }
+
+    public static boolean girderSlopesOnly() {
+        return get(GIRDER_SLOPES_ONLY::get, true);
     }
 
     public static List<? extends String> biomeRaise() {

@@ -29,10 +29,10 @@ import net.minecraft.world.level.chunk.ChunkAccess;
  * scheduled tick, no TrackPropagator. Only blocks inside the chunk are written.
  *
  * girderTracks: the metal girder variant, as Create builds it when track is placed with metal girders in the
- * offhand (TrackPaver): curves get the Girder flag (Create renders their supports), every straight or diagonal
- * track block gets a metal girder under each rail — one block below, on both sides of the track along
- * axis × up; z-axis girders run along z, diagonal ones use the girder's default state. Unlike the player's
- * pavement, these replace the bed below.
+ * offhand (TrackPaver): slopes get the Girder flag (Create renders their supports), their track blocks — and
+ * with girderSlopesOnly off every straight block too — a metal girder under each rail, one block below on both
+ * sides along axis × up. Never on S-bends and diagonal shifts (broken there). Unlike the player's pavement,
+ * these replace the bed below.
  */
 public final class TrackWriter {
 
@@ -47,7 +47,8 @@ public final class TrackWriter {
         if (first < 0) {
             return;
         }
-        boolean girders = RailwaysConfig.girderTracks();
+        boolean girderRamps = RailwaysConfig.girderTracks();
+        boolean girderStraights = girderRamps && !RailwaysConfig.girderSlopesOnly();
         BlockState track = AllBlocks.TRACK.getDefaultState();
         BlockState zGirder = AllBlocks.METAL_GIRDER.getDefaultState()
                 .setValue(GirderBlock.TOP, false).setValue(GirderBlock.BOTTOM, false)
@@ -71,7 +72,7 @@ public final class TrackWriter {
                         // EntityBlock); plain track has none, so on load vanilla warns and wastes a lookup per block
                         access.removeBlockEntity(pos);
                     }
-                    if (girders) {
+                    if (girderStraights) {
                         girder(level, chunk, pos, x - 1, y - 1, z, zGirder);
                         girder(level, chunk, pos, x + 1, y - 1, z, zGirder);
                     }
@@ -79,6 +80,8 @@ public final class TrackWriter {
                 continue;
             }
             PieceGeometry.Geometry geometry = PieceGeometry.of(layout, i);
+            // girders only on ramps: Create's girder supports render broken on S-bends and diagonal shifts
+            boolean girders = girderRamps && layout.type(i) == RailLayout.RAMP;
             for (PieceGeometry.TrackBlock block : geometry.blocks()) {
                 BlockPos p = block.pos();
                 if (inChunk(chunk, p)) {
@@ -140,8 +143,9 @@ public final class TrackWriter {
         return tag;
     }
 
-    static boolean isGirderColumn(int x, int y, int trackX, int bedY) {
-        return RailwaysConfig.girderTracks() && y == bedY - 1 && Math.abs(x - trackX) == 1;
+    /** True if (x, y, z) holds a girder this writer placed under a rail (templates leave those alone). */
+    static boolean isGirderColumn(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int trackX, int bedY) {
+        return y == bedY - 1 && Math.abs(x - trackX) == 1 && level.getBlockState(pos.set(x, y, z)).is(AllBlocks.METAL_GIRDER.get());
     }
 
     private static boolean inChunk(ChunkPos chunk, BlockPos pos) {

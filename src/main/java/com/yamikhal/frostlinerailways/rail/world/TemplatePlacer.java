@@ -58,7 +58,7 @@ final class TemplatePlacer {
             }
             for (int ty = 0; ty < t.sizeY(); ty++) {
                 int y = baseY + ty;
-                if ((x == trackX && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(x, y, trackX, bedY)) {
+                if ((x == trackX && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(level, pos, x, y, z, trackX, bedY)) {
                     continue;
                 }
                 BlockState state = t.state(tx, ty, tz);
@@ -107,7 +107,7 @@ final class TemplatePlacer {
                 boolean trackColumn = x == trackX;
                 for (int ty = 0; ty < t.sizeY(); ty++) {
                     int y = baseY + ty;
-                    if ((trackColumn && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(x, y, trackX, bedY)) {
+                    if ((trackColumn && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(level, pos, x, y, z, trackX, bedY)) {
                         continue;
                     }
                     pos.set(x, y, z);
