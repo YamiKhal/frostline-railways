@@ -4,6 +4,8 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
 import com.yamikhal.frostlinerailways.RailwaysConfig;
+import com.yamikhal.frostlinerailways.rail.decor.RailContext;
+import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.graph.RailGraphService;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayoutService;
@@ -20,6 +22,8 @@ import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.level.LevelEvent;
 import org.slf4j.Logger;
+
+import java.util.List;
 
 /**
  * Wires Frostline Rail into the game: line datapack loading, layout on level load, world spawn
@@ -43,26 +47,38 @@ public final class RailRuntime {
         MinecraftForge.EVENT_BUS.addListener(RailGraphService::onServerTick);
         MinecraftForge.EVENT_BUS.addListener(RailGraphService::onChunkLoad);
         MinecraftForge.EVENT_BUS.addListener(RailRuntime::onRegisterCommands);
+        MinecraftForge.EVENT_BUS.addListener(StationRuntime::onChunkLoad);
+        MinecraftForge.EVENT_BUS.addListener(StationRuntime::onServerTick);
+        MinecraftForge.EVENT_BUS.addListener(StationRuntime::onLogin);
+        MinecraftForge.EVENT_BUS.addListener(StationRuntime::onServerStopped);
     }
 
     /**
-     * A new world's spawn goes beside the line at spawnZ, spawnOffsetX blocks east of the track, on
-     * the ground. Only for new worlds (vanilla fires this once, when the spawn is first chosen).
+     * A new world's spawn goes on the spawn station's platform when there is one (spawnOnPlatform),
+     * else beside the line at spawnZ, spawnOffsetX blocks east of the track, on the ground. Only for new
+     * worlds (vanilla fires this once, when the spawn is first chosen).
      */
     private static void onCreateSpawn(LevelEvent.CreateSpawnPosition event) {
         if (!RailwaysConfig.railEnabled() || !RailwaysConfig.spawnNearLine() || !(event.getLevel() instanceof ServerLevel level)) {
             return;
         }
         RailLayout layout = RailLayoutService.layout(level.dimension(), true);
-        if (layout == null) {
+        if (layout == null || RailLayoutService.definition() == null) {
             return;
         }
-        int z = Math.max(layout.zNorthEnd() + 64, Math.min(layout.zSouthEnd() - 64, RailwaysConfig.spawnZ()));
-        int piece = layout.pieceAt(z);
-        int x = (int) Math.round(layout.centreX(piece, z)) + RailwaysConfig.spawnOffsetX();
-        int y = level.getChunkSource().getGenerator().getBaseHeight(x, z, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-                level, level.getChunkSource().randomState());
-        BlockPos spawn = new BlockPos(x, y, z);
+        StationPlanner.Site site = RailwaysConfig.spawnOnPlatform()
+                ? StationPlanner.spawnSite(new RailContext(level, layout, RailLayoutService.definition())) : null;
+        BlockPos spawn;
+        if (site != null) {
+            spawn = new BlockPos(site.trackX() + site.sign() * (site.def().look().gap() + 2), site.bedY() + 1, site.zCentre());
+        } else {
+            int z = Math.max(layout.zNorthEnd() + 64, Math.min(layout.zSouthEnd() - 64, RailwaysConfig.spawnZ()));
+            int piece = layout.pieceAt(z);
+            int x = (int) Math.round(layout.centreX(piece, z)) + RailwaysConfig.spawnOffsetX();
+            int y = level.getChunkSource().getGenerator().getBaseHeight(x, z, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    level, level.getChunkSource().randomState());
+            spawn = new BlockPos(x, y, z);
+        }
         event.getSettings().setSpawn(spawn, 0.0F);
         event.setCanceled(true);
         LOGGER.info("[FrostlineRailways] world spawn set beside the rail line at {}", spawn);
@@ -73,6 +89,7 @@ public final class RailRuntime {
                 .then(Commands.literal("rail").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("info").executes(c -> info(c.getSource())))
                         .then(Commands.literal("where").executes(c -> where(c.getSource())))
+                        .then(Commands.literal("stations").executes(c -> stations(c.getSource())))
                         .then(Commands.literal("tp")
                                 .then(Commands.argument("blocks_from_south_end", IntegerArgumentType.integer(0))
                                         .executes(c -> tp(c.getSource(), IntegerArgumentType.getInteger(c, "blocks_from_south_end")))))
@@ -137,6 +154,22 @@ public final class RailRuntime {
         return say(source, (layout.zSouthEnd() - z) + " blocks from the south end, on a " + typeName(layout.type(piece))
                 + " (" + (layout.zSouth(piece) - layout.zNorth(piece) + 1) + " blocks), track at x "
                 + Math.round(layout.centreX(piece, z)) + " y " + Math.round(layout.centreY(piece, z)));
+    }
+
+    private static int stations(CommandSourceStack source) {
+        RailLayout layout = layout(source);
+        ServerLevel level = layout == null ? null : source.getServer().getLevel(RailLayoutService.dimension());
+        if (level == null || RailLayoutService.definition() == null) {
+            return 0;
+        }
+        List<StationPlanner.Site> sites = StationPlanner.sites(new RailContext(level, layout, RailLayoutService.definition()));
+        StringBuilder text = new StringBuilder(sites.size() + " stations, south to north:");
+        for (StationPlanner.Site site : sites) {
+            text.append("\n  ").append(site.name()).append(site.def().where().spawn() ? " (spawn)" : "")
+                    .append(": ").append(layout.zSouthEnd() - site.zCentre()).append(" blocks from the south end, x ")
+                    .append(site.trackX()).append(" y ").append(site.bedY()).append(" z ").append(site.zCentre());
+        }
+        return say(source, text.toString());
     }
 
     private static int tp(CommandSourceStack source, int blocks) throws CommandSyntaxException {

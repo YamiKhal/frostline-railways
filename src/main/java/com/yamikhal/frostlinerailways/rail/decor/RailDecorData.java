@@ -64,6 +64,7 @@ public final class RailDecorData {
             List<Entry<T>> list = new ArrayList<>();
             loaded.forEach((id, value) -> list.add(new Entry<>(id, value)));
             entries = List.copyOf(list);
+            RailTemplates.clear();
             LOGGER.info("[FrostlineRailways] {}: {}", folder, loaded.keySet());
         }
 

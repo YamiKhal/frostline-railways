@@ -1,8 +1,11 @@
 package com.yamikhal.frostlinerailways.rail.world;
 
+import com.yamikhal.frostlinerailways.RailwaysConfig;
 import com.yamikhal.frostlinerailways.rail.RailLineDef;
 import com.yamikhal.frostlinerailways.rail.decor.RailContext;
 import com.yamikhal.frostlinerailways.rail.decor.RailStyle;
+import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
+import com.yamikhal.frostlinerailways.rail.decor.StructurePlanner;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
@@ -13,18 +16,23 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
- * Shapes the terrain under and around the track in one chunk (RAILWAYS.md §A3.2, §A8.5), using the
+ * Shapes the terrain under and around the track in one chunk (RAILWAYS.md §A3.2, §A8.5, §A8.8), using the
  * row's kind and style from {@link RailContext}:
  *
  *   OPEN    air clearance blocks above the track; a gap of at most maxFill filled; ballast on top
  *   CUT     the ground above the track is cut away down to the track; ballast
  *   TUNNEL  a tube of the style's tunnel half width and height; the style's lining on its walls and
  *           ceiling; at a portal row the style's portal block instead; ballast floor
- *   BRIDGE  the style's deck under the track, railing at the deck's edge, piers every pierSpacing
+ *   BRIDGE  the style's deck under the track, railing at the deck's edge, piers every pierSpacing (railing
+ *           and piers left out where a bridge structure stands)
  *
- * Only this chunk's columns are shaped. Columns up to MARGIN blocks outside it (inside the 3x3
- * feature region) only have loose blocks — leaves, logs, plants, snow, ice — cleared from the
- * clearance, so trees of neighbours decorated later cannot hang over the line.
+ * With clearAboveTrack, outside tunnels, every bed column of this chunk is cleared above the track up to
+ * the surface (cut walls over the track, trees, hanging leaves), and loose blocks — leaves, logs, plants,
+ * snow, ice — are cleared up to the surface in clearExtraWidth more columns each side.
+ *
+ * Only this chunk's columns are shaped. Columns up to MARGIN blocks outside it (inside the 3x3 feature
+ * region) only have loose blocks cleared, so trees of neighbours decorated later cannot hang over the
+ * line. Nothing further than MARGIN from the chunk is touched: WorldGenRegion only allows neighbours.
  */
 public final class BedBaker {
 
@@ -40,6 +48,12 @@ public final class BedBaker {
         RailLayout layout = ctx.layout;
         RailLineDef.Bed bed = ctx.def.bed();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        boolean clearAbove = RailwaysConfig.clearAboveTrack();
+        int extra = clearAbove ? RailwaysConfig.clearExtraWidth() : 0;
+        int trainHalf = RailwaysConfig.trainHalfWidth();
+        int clearHeight = RailwaysConfig.clearHeight();
+        int maxY = level.getMaxBuildHeight() - 1;
+        StructurePlanner.Plan plan = StructurePlanner.plan(ctx, level.getServer());
 
         int fromZ = Math.min(chunk.getMaxBlockZ() + MARGIN, layout.zSouthEnd());
         int toZ = Math.max(chunk.getMinBlockZ() - MARGIN, layout.zNorthEnd());
@@ -48,23 +62,42 @@ public final class BedBaker {
             RailStyle style = row.style().value();
             byte type = layout.type(row.piece());
             int curveExtra = type == RailLayout.BEND || type == RailLayout.SHIFT ? CURVE_EXTRA : 0;
-            int tubeHalf = row.kind() == RailContext.Kind.TUNNEL ? style.tunnel().halfWidth() : bed.halfWidth();
-            int width = Math.max(tubeHalf + 1, bed.halfWidth()) + curveExtra;
+            boolean tunnel = row.kind() == RailContext.Kind.TUNNEL;
+            int tubeHalf = tunnel ? style.tunnel().halfWidth() : bed.halfWidth();
+            int width = Math.max(Math.max(tubeHalf + 1, bed.halfWidth()), trainHalf + 1) + curveExtra;
+            int reach = width + (tunnel ? 0 : extra);
+            boolean bridgeStructure = row.kind() == RailContext.Kind.BRIDGE && plan.bridgeAt(z);
+            // a neighbour may already have built a station here: its moss, leaves and plants are not trees
+            boolean station = atStation(ctx, z);
             boolean zInChunk = z >= chunk.getMinBlockZ() && z <= chunk.getMaxBlockZ();
             int centreX = row.trackX();
-            for (int dx = -width; dx <= width; dx++) {
+            for (int dx = -reach; dx <= reach; dx++) {
                 int x = centreX + dx;
-                if (zInChunk && x >= chunk.getMinBlockX() && x <= chunk.getMaxBlockX()) {
-                    column(level, pos, x, z, dx, curveExtra, row, style, bed);
-                } else {
-                    clearLoose(level, pos, x, z, row.bedY(), Math.max(bed.clearance(), style.tunnel().height()));
+                if (x < chunk.getMinBlockX() - MARGIN || x > chunk.getMaxBlockX() + MARGIN) {
+                    continue;
+                }
+                boolean inChunk = zInChunk && x >= chunk.getMinBlockX() && x <= chunk.getMaxBlockX();
+                boolean bedColumn = Math.abs(dx) <= width;
+                // at least clearHeight above the track, and up to the surface where that is higher
+                int top = clearAbove && !tunnel ? Math.min(maxY, Math.max(row.bedY() + clearHeight, surfaceTop(level, x, z))) : 0;
+                if (inChunk && bedColumn) {
+                    column(level, pos, x, z, dx, curveExtra, row, style, bed, bridgeStructure, trainHalf);
+                    if (clearAbove && !tunnel) {
+                        clear(level, pos, x, z, row.bedY() + 1, top, false);
+                    }
+                } else if (station) {
+                    continue;
+                } else if (clearAbove && !tunnel) {
+                    clear(level, pos, x, z, row.bedY(), top, true);
+                } else if (bedColumn) {
+                    clear(level, pos, x, z, row.bedY(), row.bedY() + Math.max(bed.clearance(), style.tunnel().height()), true);
                 }
             }
         }
     }
 
     private static void column(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int dx, int curveExtra,
-                               RailContext.Row row, RailStyle style, RailLineDef.Bed bed) {
+                               RailContext.Row row, RailStyle style, RailLineDef.Bed bed, boolean bridgeStructure, int trainHalf) {
         int bedY = row.bedY();
         int abs = Math.abs(dx);
         boolean deckColumn = abs <= bed.halfWidth() + curveExtra;
@@ -101,12 +134,17 @@ public final class BedBaker {
                 for (int y = bedY; y <= bedY + bed.clearance(); y++) {
                     setAir(level, pos.set(x, y, z));
                 }
-                if (!deckColumn) {
+                // the deck reaches one block past the train's width, so the railing stands outside it
+                int deckHalf = Math.max(bed.halfWidth(), trainHalf + 1) + curveExtra;
+                if (abs > deckHalf) {
                     return;
                 }
                 RailStyle.Bridge bridge = style.bridge();
                 level.setBlock(pos.set(x, bedY - 1, z), bridge.deck(), 2);
-                if (abs == bed.halfWidth() + curveExtra && bridge.railing().isPresent()) {
+                if (bridgeStructure) {
+                    return;
+                }
+                if (abs == deckHalf && bridge.railing().isPresent()) {
                     level.setBlock(pos.set(x, bedY, z), bridge.railing().get(), 2);
                 }
                 if (abs <= 1 && Math.floorMod(z, bed.pierSpacing()) == 0) {
@@ -147,10 +185,24 @@ public final class BedBaker {
         return y;
     }
 
-    private static void clearLoose(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int bedY, int clearance) {
-        for (int y = bedY; y <= bedY + clearance; y++) {
+    private static boolean atStation(RailContext ctx, int z) {
+        for (StationPlanner.Site site : StationPlanner.sites(ctx)) {
+            if (z >= site.zNorth() - MARGIN && z <= site.zSouth() + MARGIN) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int surfaceTop(WorldGenLevel level, int x, int z) {
+        return level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+    }
+
+    /** Air from fromY to toY: every block, or only loose ones (leaves, logs, plants, snow, ice). */
+    private static void clear(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int fromY, int toY, boolean looseOnly) {
+        for (int y = fromY; y <= toY; y++) {
             BlockState state = level.getBlockState(pos.set(x, y, z));
-            if (!state.isAir() && (isLoose(state) || state.is(BlockTags.ICE))) {
+            if (!state.isAir() && (!looseOnly || isLoose(state) || state.is(BlockTags.ICE))) {
                 level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
             }
         }

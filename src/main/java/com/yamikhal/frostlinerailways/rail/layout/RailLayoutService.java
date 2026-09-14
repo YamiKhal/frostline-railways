@@ -32,7 +32,7 @@ public final class RailLayoutService {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     /** Bump when the builder's output changes for the same inputs. */
-    private static final int ALGORITHM = 2;
+    private static final int ALGORITHM = 3;
     private static final String FILE = "frostline_railways_line.dat";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "FrostlineRailways-Layout");
@@ -67,7 +67,7 @@ public final class RailLayoutService {
             return false;
         }
         File file = level.getServer().getWorldPath(LevelResource.ROOT).resolve("data").resolve(FILE).toFile();
-        String hash = ALGORITHM + "|" + level.getSeed() + "|" + lineId + "|" + def;
+        String hash = ALGORITHM + "|" + level.getSeed() + "|" + lineId + "|" + def + "|" + RaiseRules.fingerprint();
         dimension = level.dimension();
         definition = def;
         future = CompletableFuture.supplyAsync(() -> loadOrBuild(level, def, lineId.toString(), hash, file, rebuild), EXECUTOR);

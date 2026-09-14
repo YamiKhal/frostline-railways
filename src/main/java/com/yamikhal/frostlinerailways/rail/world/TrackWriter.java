@@ -13,6 +13,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
 
 /**
  * Writes Create track for one chunk during world generation (RAILWAYS.md §A3.2, §A8.4).
@@ -38,6 +39,7 @@ public final class TrackWriter {
         BlockState track = AllBlocks.TRACK.getDefaultState();
         String entityId = BlockEntityType.getKey(AllBlockEntityTypes.TRACK.get()).toString();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        ChunkAccess access = level.getChunk(chunk.x, chunk.z);
 
         for (int i = first; i < layout.count() && layout.zSouth(i) >= minZ; i++) {
             if (layout.type(i) == RailLayout.STRAIGHT) {
@@ -48,6 +50,9 @@ public final class TrackWriter {
                 int y = layout.ySouth(i);
                 for (int z = Math.min(layout.zSouth(i), maxZ); z >= Math.max(layout.zNorth(i), minZ); z--) {
                     level.setBlock(pos.set(x, y, z), track, 2);
+                    // WorldGenRegion leaves a DUMMY block entity for every track block (TrackBlock is an
+                    // EntityBlock); plain track has none, so on load vanilla warns and wastes a lookup per block
+                    access.removeBlockEntity(pos);
                 }
                 continue;
             }
@@ -56,6 +61,9 @@ public final class TrackWriter {
                 if (inChunk(chunk, block.pos())) {
                     level.setBlock(block.pos(), track.setValue(TrackBlock.SHAPE, block.shape())
                             .setValue(TrackBlock.HAS_BE, block.hasBlockEntity()), 2);
+                    if (!block.hasBlockEntity()) {
+                        access.removeBlockEntity(block.pos());
+                    }
                 }
             }
             for (PieceGeometry.BlockEntity entity : geometry.entities()) {

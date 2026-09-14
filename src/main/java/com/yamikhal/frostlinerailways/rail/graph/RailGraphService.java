@@ -8,7 +8,10 @@ import com.simibubi.create.content.trains.graph.TrackNodeLocation.DiscoveredLoca
 import com.simibubi.create.content.trains.signal.SignalPropagator;
 import com.simibubi.create.content.trains.track.TrackMaterial;
 import com.yamikhal.frostlinerailways.RailwaysConfig;
+import com.yamikhal.frostlinerailways.rail.RailLineDef;
 import com.yamikhal.frostlinerailways.rail.create.PieceGeometry;
+import com.yamikhal.frostlinerailways.rail.decor.RailContext;
+import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayoutService;
 import net.createmod.catnip.data.Couple;
@@ -68,6 +71,13 @@ public final class RailGraphService {
     private static final Set<Integer> QUEUED = ConcurrentHashMap.newKeySet();
     private static int built;
 
+    /** Blocks either side of the spawn station whose edges are built first (RAILWAYS.md §A8.9). */
+    private static final int PRIORITY_MARGIN = 128;
+    private static volatile int priorityMin = Integer.MAX_VALUE;
+    private static volatile int priorityMax = Integer.MIN_VALUE;
+    /** Priority edges not yet connected; -1 before a build is queued. */
+    private static volatile int priorityRemaining = -1;
+
     private RailGraphService() {
     }
 
@@ -85,6 +95,9 @@ public final class RailGraphService {
         graph = null;
         QUEUE.clear();
         QUEUED.clear();
+        priorityRemaining = -1;
+        priorityMin = Integer.MAX_VALUE;
+        priorityMax = Integer.MIN_VALUE;
         RailLayoutService.stop();
     }
 
@@ -122,7 +135,9 @@ public final class RailGraphService {
             state = State.IDLE;
             return;
         }
+        priorityRange(level, current);
         if (current.hash.equals(readMarker()) && present(level, 0) && present(level, list.size() - 1)) {
+            priorityRemaining = 0;
             state = State.BUILT;
             LOGGER.info("[FrostlineRailways] rail graph present for this line ({} edges)", list.size());
             return;
@@ -135,9 +150,21 @@ public final class RailGraphService {
         if (current == null) {
             return;
         }
+        // the spawn station's surroundings first, so its starting train does not wait for the whole line
+        int[] keys = edgeSouthZ;
+        int priority = 0;
         for (int i = 0; i < current.size(); i++) {
-            queue(i);
+            if (inPriority(keys[i])) {
+                queue(i);
+                priority++;
+            }
         }
+        for (int i = 0; i < current.size(); i++) {
+            if (!inPriority(keys[i])) {
+                queue(i);
+            }
+        }
+        priorityRemaining = priority;
         built = 0;
         state = State.BUILDING;
         LOGGER.info("[FrostlineRailways] rail graph queued: {} edges", current.size());
@@ -162,6 +189,9 @@ public final class RailGraphService {
         while (done < budget && System.nanoTime() < deadline && (edge = QUEUE.poll()) != null) {
             QUEUED.remove(edge);
             connect(level, edges.get(edge));
+            if (state == State.BUILDING && priorityRemaining > 0 && inPriority(edgeSouthZ[edge])) {
+                priorityRemaining--;
+            }
             done++;
         }
         if (done > 0 && RailwaysConfig.railPerfLogging()) {
@@ -304,6 +334,31 @@ public final class RailGraphService {
     }
 
     // --- status ------------------------------------------------------------------------------
+
+    private static void priorityRange(ServerLevel level, RailLayout current) {
+        priorityMin = Integer.MAX_VALUE;
+        priorityMax = Integer.MIN_VALUE;
+        RailLineDef def = RailLayoutService.definition();
+        StationPlanner.Site site = def == null ? null : StationPlanner.spawnSite(new RailContext(level, current, def));
+        if (site != null) {
+            priorityMin = site.zNorth() - PRIORITY_MARGIN;
+            priorityMax = site.zSouth() + PRIORITY_MARGIN;
+        }
+    }
+
+    private static boolean inPriority(int key) {
+        return key >= priorityMin && key <= priorityMax;
+    }
+
+    /** True if every edge between zMin and zMax is in the graph: the whole line is, or it lies in the spawn area built first. */
+    public static boolean readyAround(int zMin, int zMax) {
+        return state == State.BUILT || (priorityRemaining == 0 && zMin >= priorityMin && zMax <= priorityMax);
+    }
+
+    /** True once every edge of the line is in the graph. */
+    public static boolean built() {
+        return state == State.BUILT;
+    }
 
     public static String status() {
         List<PieceGeometry.Edge> current = edges;

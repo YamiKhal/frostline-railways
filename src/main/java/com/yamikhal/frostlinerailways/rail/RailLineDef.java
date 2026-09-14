@@ -26,19 +26,24 @@ public record RailLineDef(ResourceLocation dimension, End south, End north, Grad
     }
 
     /**
-     * Vertical profile. The track holds the height of the highest ground in the next {@code lookahead}
-     * blocks, climbing to it in one continuous ramp and staying level until it has passed it, then
-     * descends in one ramp. Ramps rise one block every {@code run} blocks (Create accepts 7..31: longer slopes are out of its 32 block reach).
-     * A descent only starts once the ground ahead is more than {@code hysteresis} blocks lower.
-     * Terrain is sampled every {@code sampleSpacing} blocks along the track.
+     * Vertical profile, chosen for the whole line at once: the cheapest sequence of track heights, one
+     * per ramp step. Every block of track costs {@code fillCost} per block it sits above the ground
+     * ({@code fillCost + bridgeCost} per block beyond the bed's maxFill) and {@code cutCost} per block
+     * below it (counted up to clearance + tunnelMinCover: deeper is a tunnel either way). Every ramp —
+     * one continuous climb or descent — costs {@code rampCost}. So the track lies on flat ground, cuts
+     * through or fills over bumps and dips, and only climbs or descends, in one go, where holding level
+     * would cost more than the ramp. Ramps rise one block every {@code run} blocks (Create accepts
+     * 7..31). Terrain is sampled every {@code sampleSpacing} blocks.
      */
-    public record Grade(int run, int lookahead, int hysteresis, int sampleSpacing) {
-        static final Grade DEFAULT = new Grade(16, 300, 3, 8);
+    public record Grade(int run, int sampleSpacing, double fillCost, double cutCost, double bridgeCost, double rampCost) {
+        static final Grade DEFAULT = new Grade(16, 8, 1.0, 1.0, 2.0, 200.0);
         static final Codec<Grade> CODEC = RecordCodecBuilder.create(i -> i.group(
                 Codec.intRange(7, 31).optionalFieldOf("run", DEFAULT.run()).forGetter(Grade::run),
-                Codec.intRange(0, 2048).optionalFieldOf("lookahead", DEFAULT.lookahead()).forGetter(Grade::lookahead),
-                Codec.intRange(0, 64).optionalFieldOf("hysteresis", DEFAULT.hysteresis()).forGetter(Grade::hysteresis),
-                Codec.intRange(4, 64).optionalFieldOf("sample_spacing", DEFAULT.sampleSpacing()).forGetter(Grade::sampleSpacing)
+                Codec.intRange(4, 64).optionalFieldOf("sample_spacing", DEFAULT.sampleSpacing()).forGetter(Grade::sampleSpacing),
+                Codec.doubleRange(0, 1000).optionalFieldOf("fill_cost", DEFAULT.fillCost()).forGetter(Grade::fillCost),
+                Codec.doubleRange(0, 1000).optionalFieldOf("cut_cost", DEFAULT.cutCost()).forGetter(Grade::cutCost),
+                Codec.doubleRange(0, 1000).optionalFieldOf("bridge_cost", DEFAULT.bridgeCost()).forGetter(Grade::bridgeCost),
+                Codec.doubleRange(0, 1_000_000).optionalFieldOf("ramp_cost", DEFAULT.rampCost()).forGetter(Grade::rampCost)
         ).apply(i, Grade::new));
     }
 
