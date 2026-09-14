@@ -1,0 +1,41 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="All Rights Reserved"
+
+[[mods]]
+modId="frostline_railways"
+version="1.0.0"
+displayName="Frostline Railways"
+description='''
+Everything rail in Frostline: frostline_railways:corridor and frostline_railways:relief_cap
+for the railway pass, and Frostline Rail, the railway generated with the world (needs Create).
+Settings: config/frostline_railways.toml. Requires Frostline.
+'''
+
+[[dependencies.frostline_railways]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.frostline_railways]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.frostline_railways]]
+    modId="frostline"
+    mandatory=true
+    versionRange="[1.0.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.frostline_railways]]
+    modId="create"
+    mandatory=false
+    versionRange="[6.0.8,)"
+    ordering="AFTER"
+    side="BOTH"

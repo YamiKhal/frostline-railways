@@ -1,0 +1,6 @@
+{
+  "type": "forge:add_features",
+  "biomes": "#frostline_railways:rail_line",
+  "features": "frostline_railways:rail_line",
+  "step": "top_layer_modification"
+}

@@ -1,0 +1,249 @@
+{
+  "replace": false,
+  "values": [
+    {
+      "id": "#minecraft:is_overworld",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_barren_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_barren_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_granite_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_granite_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_red_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_red_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_rubble_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_ruined_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:blizzard_ruined_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:consumed_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:consumed_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_burrow_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_crevasse_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_deadwood_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_drift_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_ice_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_lake",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_overhang_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:frozen_spike_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_ice_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_overhang_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_rifted_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_settlement_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_settlement_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_slate_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_slate_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_slate_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:glacial_spike_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:green_bluffs",
+      "required": false
+    },
+    {
+      "id": "frostline:green_crags",
+      "required": false
+    },
+    {
+      "id": "frostline:green_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:green_hollows",
+      "required": false
+    },
+    {
+      "id": "frostline:green_meadow",
+      "required": false
+    },
+    {
+      "id": "frostline:green_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:green_slopes",
+      "required": false
+    },
+    {
+      "id": "frostline:heart_of_the_quiet",
+      "required": false
+    },
+    {
+      "id": "frostline:ice_wall_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:ice_wall_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:ice_wall_peaks",
+      "required": false
+    },
+    {
+      "id": "frostline:ice_wall_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:infested_heights",
+      "required": false
+    },
+    {
+      "id": "frostline:infested_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:infested_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:overgrown_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_dead_forest",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_gravel_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_highlands",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_pine_forest",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_plains",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_rifted_slopes",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_slopes",
+      "required": false
+    },
+    {
+      "id": "frostline:snowy_stony_highlands",
+      "required": false
+    },
+    {
+      "id": "frostline:tainted_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:tainted_heights",
+      "required": false
+    },
+    {
+      "id": "frostline:tainted_hills",
+      "required": false
+    },
+    {
+      "id": "frostline:tainted_obsidian_cliffs",
+      "required": false
+    },
+    {
+      "id": "frostline:tainted_plains",
+      "required": false
+    }
+  ]
+}
