@@ -32,7 +32,7 @@ public final class Envelope {
             return false;
         }
         byte type = ctx.layout.type(row.piece());
-        // the layout centre line only approximates the real track on S-bends and diagonal shifts: one more block there
+        // on S-bends and diagonal shifts the track crosses rows at an angle and its rails reach wider: one more block there
         double curve = type == RailLayout.BEND || type == RailLayout.SHIFT ? 1.0 : 0.0;
         return Math.abs(x - row.centreX()) <= halfWidth + 0.5 + curve;
     }

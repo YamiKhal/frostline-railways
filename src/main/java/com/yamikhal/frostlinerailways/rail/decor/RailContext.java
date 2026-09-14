@@ -1,6 +1,8 @@
 package com.yamikhal.frostlinerailways.rail.decor;
 
+import com.yamikhal.frostlinerailways.RailwaysConfig;
 import com.yamikhal.frostlinerailways.rail.RailLineDef;
+import com.yamikhal.frostlinerailways.rail.create.PieceGeometry;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
@@ -69,9 +71,30 @@ public final class RailContext {
         return rows.computeIfAbsent(z, this::computeRow);
     }
 
+    /**
+     * True if row z is on an S-bend or diagonal shift, or within curveMargin rows of one: walls, railings and
+     * top_curve parts widen over this whole range, so they open up before the curve starts and close after it ends.
+     */
+    public boolean nearCurve(int z) {
+        int margin = RailwaysConfig.curveMargin();
+        int from = layout.pieceAt(Math.min(layout.zSouthEnd(), z + margin));
+        int to = layout.pieceAt(Math.max(layout.zNorthEnd(), z - margin));
+        if (from < 0 || to < 0) {
+            return false;
+        }
+        for (int i = from; i <= to; i++) {
+            byte type = layout.type(i);
+            if (type == RailLayout.BEND || type == RailLayout.SHIFT) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private Row computeRow(int z) {
         int piece = layout.pieceAt(z);
-        double centreX = layout.centreX(piece, z);
+        // Create's real curve, not the layout's straight interpolation (PieceGeometry#centreX)
+        double centreX = PieceGeometry.centreX(layout, piece, z);
         int bedY = (int) Math.floor(layout.centreY(piece, z));
         RailDecorData.Entry<RailStyle> style = style(z);
         Kind kind = kind(z, style.value());

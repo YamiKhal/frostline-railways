@@ -43,6 +43,7 @@ public final class RailwaysConfig {
     private static final ForgeConfigSpec.IntValue CLEAR_HEIGHT;
     private static final ForgeConfigSpec.IntValue BRIDGE_FULL_MIN_LENGTH;
     private static final ForgeConfigSpec.IntValue BRIDGE_FULL_MIN_MIDDLES;
+    private static final ForgeConfigSpec.IntValue CURVE_MARGIN;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -118,6 +119,9 @@ public final class RailwaysConfig {
                 .defineInRange("bridgeFullMinLength", 48, 1, 100000);
         BRIDGE_FULL_MIN_MIDDLES = b.comment("A full bridge must fit at least this many middle templates between start and end.")
                 .defineInRange("bridgeFullMinMiddles", 2, 1, 64);
+        CURVE_MARGIN = b.comment("Rows before and after an S-bend or diagonal shift that are built as curve rows too: tunnel walls and bridge",
+                        "decks widen and top_curve parts replace top there, so the widening starts before the curve and ends after it.")
+                .defineInRange("curveMargin", 8, 0, 64);
         b.pop();
 
         b.pop();
@@ -230,6 +234,10 @@ public final class RailwaysConfig {
 
     public static int bridgeFullMinMiddles() {
         return get(BRIDGE_FULL_MIN_MIDDLES::get, 2);
+    }
+
+    public static int curveMargin() {
+        return get(CURVE_MARGIN::get, 8);
     }
 
     private static <T> T get(Supplier<T> value, T fallback) {

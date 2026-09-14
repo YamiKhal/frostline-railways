@@ -77,6 +77,61 @@ public final class PieceGeometry {
         };
     }
 
+    /**
+     * The real track centre x (block coordinate, like RailLayout#centreX) at block z of an S-bend or diagonal shift:
+     * the mean x of the piece's Create curves where they cross row z. The layout's own centre line is a straight
+     * interpolation, up to ~2 blocks off Create's bezier; everything built beside the track (walls, railings,
+     * the train's space) follows this one. Other pieces, and rows no curve crosses: the layout's value.
+     */
+    public static double centreX(RailLayout layout, int i, int z) {
+        byte type = layout.type(i);
+        if (type != RailLayout.BEND && type != RailLayout.SHIFT) {
+            return layout.centreX(i, z);
+        }
+        double[] table;
+        synchronized (CENTRES) {
+            if (centresLayout != layout || CENTRES.size() > CACHE_LIMIT) {
+                CENTRES.clear();
+                centresLayout = layout;
+            }
+            table = CENTRES.computeIfAbsent(i, key -> centres(layout, key));
+        }
+        int index = layout.zSouth(i) - z;
+        double x = index >= 0 && index < table.length ? table[index] : Double.NaN;
+        return Double.isNaN(x) ? layout.centreX(i, z) : x;
+    }
+
+    private static final Map<Integer, double[]> CENTRES = new java.util.HashMap<>();
+    private static RailLayout centresLayout;
+    private static final int SAMPLES_PER_BLOCK = 16;
+
+    private static double[] centres(RailLayout layout, int i) {
+        int rows = layout.zSouth(i) - layout.zNorth(i) + 1;
+        double[] sum = new double[rows];
+        int[] count = new int[rows];
+        for (Edge edge : of(layout, i).edges()) {
+            BezierConnection curve = edge.curve();
+            if (curve == null) {
+                continue;
+            }
+            int samples = (int) Math.ceil(curve.getLength() * SAMPLES_PER_BLOCK) + 1;
+            for (int s = 0; s <= samples; s++) {
+                Vec3 p = curve.getPosition(s / (double) samples);
+                int index = layout.zSouth(i) - Mth.floor(p.z);
+                if (index >= 0 && index < rows) {
+                    // curve positions are block-space (x + 0.5 is a block's middle)
+                    sum[index] += p.x - 0.5;
+                    count[index]++;
+                }
+            }
+        }
+        double[] table = new double[rows];
+        for (int r = 0; r < rows; r++) {
+            table[r] = count[r] == 0 ? Double.NaN : sum[r] / count[r];
+        }
+        return table;
+    }
+
     // --- S-bend ----------------------------------------------------------------------------------
 
     private static Geometry bend(RailLayout l, int i) {

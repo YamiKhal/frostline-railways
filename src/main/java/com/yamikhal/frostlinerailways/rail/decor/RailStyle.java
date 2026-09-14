@@ -102,9 +102,15 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
      *   merge_gap         rows of another kind (or none) a stretch may bridge over and still count as one
      *   foundation, foundation_depth   fill under whole-template columns standing on the template floor (y = 0)
      *                     down to the ground: piers
+     *   tunnel_margin     cut_cover: a cover stretch with a tunnel row within this many rows of either end is not built
+     *                     (mountain tunnels take priority over overhead covers)
+     *   connect_gap       tunnel_structures, cut_cover: two stretches at most this many rows apart become one, whatever
+     *                     the rows between them are (except tunnel rows for covers, and stations); merge_gap still
+     *                     applies to longer gaps of rows with no structure
      */
     public record Params(int trackZ, int trackY, int topTrackY, int minDepth, int minHeight, int minLength, int maxLength,
-                         int minGap, int mergeGap, Optional<BlockState> foundation, int foundationDepth) {
+                         int minGap, int mergeGap, Optional<BlockState> foundation, int foundationDepth, int tunnelMargin,
+                         int connectGap) {
         static final MapCodec<Params> MAP_CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
                 Codec.intRange(0, 256).optionalFieldOf("track_z", 4).forGetter(Params::trackZ),
                 Codec.intRange(0, 64).optionalFieldOf("track_y", 1).forGetter(Params::trackY),
@@ -116,7 +122,9 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
                 Codec.intRange(0, 100_000).optionalFieldOf("min_gap", 96).forGetter(Params::minGap),
                 Codec.intRange(0, 256).optionalFieldOf("merge_gap", 4).forGetter(Params::mergeGap),
                 BlockState.CODEC.optionalFieldOf("foundation").forGetter(Params::foundation),
-                Codec.intRange(0, 256).optionalFieldOf("foundation_depth", 64).forGetter(Params::foundationDepth)
+                Codec.intRange(0, 256).optionalFieldOf("foundation_depth", 64).forGetter(Params::foundationDepth),
+                Codec.intRange(0, 100_000).optionalFieldOf("tunnel_margin", 8).forGetter(Params::tunnelMargin),
+                Codec.intRange(0, 256).optionalFieldOf("connect_gap", 3).forGetter(Params::connectGap)
         ).apply(i, Params::new));
     }
 
@@ -194,6 +202,14 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
 
         public int foundationDepth() {
             return params.foundationDepth();
+        }
+
+        public int tunnelMargin() {
+            return params.tunnelMargin();
+        }
+
+        public int connectGap() {
+            return params.connectGap();
         }
     }
 

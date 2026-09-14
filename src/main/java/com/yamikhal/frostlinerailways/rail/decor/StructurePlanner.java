@@ -20,7 +20,8 @@ import java.util.function.ToIntFunction;
  * Rows are classified, south to north:
  *
  *   tunnel       TUNNEL rows
- *   cover        CUT rows whose ground is at least the style's cut_cover.min_depth above the track
+ *   cover        CUT rows whose ground is at least the style's cut_cover.min_depth above the track; a cover
+ *                stretch with a TUNNEL row within cut_cover.tunnel_margin of it is dropped (tunnels win)
  *   full bridge  BRIDGE rows whose track is at least bridge_structures.min_height above the ground
  *   flat bridge  lower BRIDGE rows
  *   blocked      within 8 blocks of a station, or off the line
@@ -201,6 +202,7 @@ public final class StructurePlanner {
         private final List<Tile> tiles = new ArrayList<>();
         private final List<SliceRun> slices = new ArrayList<>();
         private int lastFullNorth = Integer.MAX_VALUE;
+        private int[] tunnelPrefix;
 
         Builder(RailContext ctx, MinecraftServer server, boolean covers, boolean bridges, boolean tunnels) {
             this.ctx = ctx;
@@ -223,17 +225,29 @@ public final class StructurePlanner {
                 }
                 int north = z;
                 int misses = 0;
+                boolean other = false;
+                boolean sequence = kind == RowKind.COVER || kind == RowKind.TUNNEL;
                 for (int probe = z - 1; probe >= layout.zNorthEnd(); probe--) {
                     RowKind k = rowKind(probe);
                     if (k == kind) {
                         north = probe;
                         misses = 0;
+                        other = false;
                         continue;
                     }
+                    misses++;
                     boolean absorbable = k == RowKind.NONE || (kind == RowKind.BRIDGE_FULL && k == RowKind.BRIDGE_FLAT);
-                    if (!absorbable || ++misses > spec.mergeGap()) {
+                    // covers and tunnels also connect across a short gap of any rows but stations (covers: not tunnels)
+                    boolean crossable = sequence && k != RowKind.BLOCKED && !(kind == RowKind.COVER && k == RowKind.TUNNEL);
+                    other |= !absorbable;
+                    if ((!absorbable && !crossable) || misses > (other ? spec.connectGap() : Math.max(spec.mergeGap(), spec.connectGap()))) {
                         break;
                     }
+                }
+                if (kind == RowKind.COVER && tunnelWithin(north - spec.tunnelMargin(), z + spec.tunnelMargin())) {
+                    // mountain tunnels take priority: no overhead cover in the cuts leading into (or between) them
+                    z = north - 1;
+                    continue;
                 }
                 RailStyle.Parts parts = spec.pick(ctx.random(VARIANT_SALT, z, kind.ordinal()));
                 switch (kind) {
@@ -247,6 +261,22 @@ public final class StructurePlanner {
             tiles.sort(Comparator.comparingInt(Tile::zMin));
             slices.sort(Comparator.comparingInt(SliceRun::zMin));
             return new Plan(tiles, slices);
+        }
+
+        /** True if any row in [minZ, maxZ] is a tunnel row (whether or not tunnel structures are on). */
+        private boolean tunnelWithin(int minZ, int maxZ) {
+            RailLayout layout = ctx.layout;
+            if (tunnelPrefix == null) {
+                // tunnelPrefix[i] = tunnel rows among the i northernmost rows
+                int rows = layout.zSouthEnd() - layout.zNorthEnd() + 1;
+                tunnelPrefix = new int[rows + 1];
+                for (int i = 0; i < rows; i++) {
+                    tunnelPrefix[i + 1] = tunnelPrefix[i] + (ctx.row(layout.zNorthEnd() + i).kind() == RailContext.Kind.TUNNEL ? 1 : 0);
+                }
+            }
+            int lo = Math.max(minZ, layout.zNorthEnd()) - layout.zNorthEnd();
+            int hi = Math.min(maxZ, layout.zSouthEnd()) - layout.zNorthEnd();
+            return hi >= lo && tunnelPrefix[hi + 1] - tunnelPrefix[lo] > 0;
         }
 
         private RowKind rowKind(int z) {

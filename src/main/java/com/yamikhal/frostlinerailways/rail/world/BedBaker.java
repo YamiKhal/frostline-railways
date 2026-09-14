@@ -47,7 +47,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 public final class BedBaker {
 
     static final int MARGIN = 8;
-    /** Extra columns each side on S-bends and diagonal shifts, where the curve leaves the straight line between its ends. */
+    /** Extra columns each side on S-bends and diagonal shifts and curveMargin rows around them (RailContext#nearCurve). */
     private static final int CURVE_EXTRA = 2;
     private static final int GROUND_SCAN = 32;
 
@@ -71,7 +71,7 @@ public final class BedBaker {
             RailContext.Row row = ctx.row(z);
             RailStyle style = row.style().value();
             byte type = layout.type(row.piece());
-            int curveExtra = type == RailLayout.BEND || type == RailLayout.SHIFT ? CURVE_EXTRA : 0;
+            int curveExtra = ctx.nearCurve(z) ? CURVE_EXTRA : 0;
             boolean tunnel = row.kind() == RailContext.Kind.TUNNEL;
             boolean bridge = row.kind() == RailContext.Kind.BRIDGE;
             boolean ground = !tunnel && !bridge;

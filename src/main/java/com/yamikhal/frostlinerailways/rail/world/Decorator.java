@@ -243,8 +243,8 @@ public final class Decorator {
             RailTemplates.Structure curve = RailTemplates.structure(level.getServer(), run.topCurve());
             for (int z = Math.max(fromZ, run.zMin()); z <= Math.min(toZ, run.zMax()); z++) {
                 RailContext.Row row = ctx.row(z);
-                byte type = ctx.layout.type(row.piece());
-                RailTemplates.Structure slice = (type == RailLayout.BEND || type == RailLayout.SHIFT) && curve != null ? curve : top;
+                // top_curve from curveMargin rows before a curve to curveMargin rows after it, so walls open up in time
+                RailTemplates.Structure slice = ctx.nearCurve(z) && curve != null ? curve : top;
                 if (slice != null) {
                     TemplatePlacer.placeSlice(level, chunk, slice, Math.floorMod(run.zMax() - z, slice.sizeX()), row.trackX(), row.bedY(),
                             run.trackY(), z, envelope, pos);
