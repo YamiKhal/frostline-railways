@@ -197,7 +197,9 @@ public final class StationRuntime {
         if (station.getPresentTrain() != null) {
             return Result.DONE;
         }
-        RailTemplates.Train template = RailTemplates.train(level.getServer(), id);
+        double roll = ((pending.site().zCentre() * 0x9E3779B97F4A7C15L) >>> 11) * 0x1.0p-53;
+        ResourceLocation file = RailTemplates.pick(level.getServer(), id, roll);
+        RailTemplates.Train template = file == null ? null : RailTemplates.train(level.getServer(), file);
         if (template == null) {
             return Result.DONE;
         }

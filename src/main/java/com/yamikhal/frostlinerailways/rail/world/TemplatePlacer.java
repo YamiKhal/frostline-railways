@@ -39,6 +39,52 @@ final class TemplatePlacer {
     private TemplatePlacer() {
     }
 
+    /**
+     * One x-slice (tx) of a template at a single row z, centred on that row's track: template z = sizeZ / 2 is the
+     * track, y = trackY the track's height. Oriented like a tile running north (x = 0 at its south edge). Used
+     * for per-row parts (tops) that follow curves row by row.
+     */
+    static void placeSlice(WorldGenLevel level, ChunkPos chunk, RailTemplates.Structure t, int tx, int trackX, int bedY, int trackY,
+                           int z, Envelope envelope, BlockPos.MutableBlockPos pos) {
+        if (z < chunk.getMinBlockZ() || z > chunk.getMaxBlockZ()) {
+            return;
+        }
+        int trackZ = t.sizeZ() / 2;
+        int baseY = bedY - trackY;
+        for (int tz = 0; tz < t.sizeZ(); tz++) {
+            int x = trackX - (tz - trackZ);
+            if (x < chunk.getMinBlockX() || x > chunk.getMaxBlockX()) {
+                continue;
+            }
+            for (int ty = 0; ty < t.sizeY(); ty++) {
+                int y = baseY + ty;
+                if ((x == trackX && y == bedY) || envelope.contains(x, y, z)) {
+                    continue;
+                }
+                BlockState state = t.state(tx, ty, tz);
+                if (state == null) {
+                    continue;
+                }
+                pos.set(x, y, z);
+                if (state.isAir()) {
+                    if (!level.getBlockState(pos).isAir()) {
+                        level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+                    }
+                    continue;
+                }
+                level.setBlock(pos, state.mirror(Mirror.LEFT_RIGHT).rotate(Rotation.COUNTERCLOCKWISE_90), 2);
+                CompoundTag nbt = t.nbt(tx, ty, tz);
+                if (nbt != null) {
+                    CompoundTag tag = nbt.copy();
+                    tag.putInt("x", x);
+                    tag.putInt("y", y);
+                    tag.putInt("z", z);
+                    level.getChunk(pos).setBlockEntityNbt(tag);
+                }
+            }
+        }
+    }
+
     static void place(WorldGenLevel level, ChunkPos chunk, RailTemplates.Structure t, int trackX, int bedY, int trackZ, int trackY,
                       int z0, int stepZ, int sign, boolean clearEmpty, Optional<BlockState> foundation, int foundationDepth,
                       boolean floorOnly, Envelope envelope, BlockPos.MutableBlockPos pos) {

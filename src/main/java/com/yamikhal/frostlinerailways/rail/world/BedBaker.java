@@ -8,9 +8,11 @@ import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.decor.StructurePlanner;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -77,10 +79,14 @@ public final class BedBaker {
             int width = Math.max(Math.max(tubeHalf + 1, bed.halfWidth()), trainHalf + 1) + curveExtra;
             int shoulder = bed.halfWidth() + curveExtra;
             int reach = width + (tunnel ? 0 : extra);
-            if (ground) {
+            // an overhead cover keeps its cut walls: no smoothing under it
+            boolean smooth = ground && !plan.coverAt(z);
+            if (smooth) {
                 reach = Math.max(reach, Math.max(shoulder + bed.bermReach(), width + bed.cutSlopeReach()));
             }
             boolean bridgeStructure = bridge && plan.bridgeAt(z);
+            boolean bridgeTop = bridge && plan.bridgeTopAt(z);
+            Block keep = style.coverLayer().map(layer -> layer.state().getBlock()).orElse(Blocks.SNOW);
             // a neighbour may already have built a station here: its moss, leaves and plants are not trees
             boolean station = atStation(ctx, z);
             boolean zInChunk = z >= chunk.getMinBlockZ() && z <= chunk.getMaxBlockZ();
@@ -96,20 +102,20 @@ public final class BedBaker {
                 // at least clearHeight above the track, and up to the surface where that is higher
                 int top = clearAbove && !tunnel ? Math.min(maxY, Math.max(row.bedY() + clearHeight, surfaceTop(level, x, z))) : 0;
                 if (inChunk) {
-                    int natural = ground && abs > shoulder ? groundY(level, pos, x, z) : 0;
+                    int natural = smooth && abs > shoulder ? groundY(level, pos, x, z) : 0;
                     if (bedColumn) {
-                        column(level, pos, x, z, dx, curveExtra, row, style, bed, bridgeStructure, trainHalf);
+                        column(level, pos, x, z, dx, curveExtra, row, style, bed, bridgeStructure, bridgeTop, trainHalf);
                         if (clearAbove && !tunnel) {
-                            clear(level, pos, x, z, row.bedY() + 1, top, false);
+                            clear(level, pos, x, z, row.bedY() + 1, top, null);
                         }
-                    } else if (ground && abs - width <= bed.cutSlopeReach()) {
+                    } else if (smooth && abs - width <= bed.cutSlopeReach()) {
                         slope(level, pos, x, z, row.bedY() + (abs - width) * bed.slopeStep(), natural, top);
                     }
-                    if (ground && abs > shoulder && abs - shoulder <= bed.bermReach()) {
+                    if (smooth && abs > shoulder && abs - shoulder <= bed.bermReach()) {
                         berm(level, pos, x, z, row.bedY() - 1 - (abs - shoulder) * bed.slopeStep(), natural, style);
                     }
                     if (!bedColumn && clearAbove && !tunnel && !station) {
-                        clear(level, pos, x, z, row.bedY(), top, true);
+                        clear(level, pos, x, z, row.bedY(), top, keep);
                     }
                     continue;
                 }
@@ -117,16 +123,17 @@ public final class BedBaker {
                     continue;
                 }
                 if (clearAbove && !tunnel) {
-                    clear(level, pos, x, z, row.bedY(), top, true);
+                    clear(level, pos, x, z, row.bedY(), top, keep);
                 } else if (bedColumn) {
-                    clear(level, pos, x, z, row.bedY(), row.bedY() + Math.max(bed.clearance(), style.tunnel().height()), true);
+                    clear(level, pos, x, z, row.bedY(), row.bedY() + Math.max(bed.clearance(), style.tunnel().height()), keep);
                 }
             }
         }
     }
 
     private static void column(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int dx, int curveExtra,
-                               RailContext.Row row, RailStyle style, RailLineDef.Bed bed, boolean bridgeStructure, int trainHalf) {
+                               RailContext.Row row, RailStyle style, RailLineDef.Bed bed, boolean bridgeStructure, boolean bridgeTop,
+                               int trainHalf) {
         int bedY = row.bedY();
         int abs = Math.abs(dx);
         boolean deckColumn = abs <= bed.halfWidth() + curveExtra;
@@ -170,13 +177,10 @@ public final class BedBaker {
                 }
                 RailStyle.Bridge bridge = style.bridge();
                 level.setBlock(pos.set(x, bedY - 1, z), bridge.deck(), 2);
-                if (bridgeStructure) {
-                    return;
-                }
-                if (abs == deckHalf && bridge.railing().isPresent()) {
+                if (!bridgeTop && abs == deckHalf && bridge.railing().isPresent()) {
                     level.setBlock(pos.set(x, bedY, z), bridge.railing().get(), 2);
                 }
-                if (abs <= 1 && Math.floorMod(z, bed.pierSpacing()) == 0) {
+                if (!bridgeStructure && abs <= 1 && Math.floorMod(z, bed.pierSpacing()) == 0) {
                     int ground = groundY(level, pos, x, z);
                     int bottom = Math.max(ground + 1, bedY - 1 - bed.maxPierDepth());
                     for (int y = bedY - 2; y >= bottom; y--) {
@@ -227,7 +231,7 @@ public final class BedBaker {
             return;
         }
         BlockState surface = level.getBlockState(pos.set(x, natural, z));
-        clear(level, pos, x, z, floor, Math.max(top, natural), false);
+        clear(level, pos, x, z, floor, Math.max(top, natural), null);
         BlockState below = level.getBlockState(pos.set(x, floor - 1, z));
         if (solidGround(level, pos, surface) && solidGround(level, pos, below)) {
             level.setBlock(pos, surface, 2);
@@ -265,13 +269,31 @@ public final class BedBaker {
         return level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
     }
 
-    /** Air from fromY to toY: every block, or only loose ones (leaves, logs, plants, snow, ice). */
-    private static void clear(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int fromY, int toY, boolean looseOnly) {
+    /**
+     * Air from fromY to toY. keep null: every block. Otherwise only loose blocks (leaves, logs, plants, snow, ice),
+     * bottom up, but a keep block (the style's cover layer, snow) still standing on something solid stays: a
+     * neighbouring chunk's cover layer must survive this chunk's clearing, a snow layer left floating on removed
+     * leaves must not.
+     */
+    private static void clear(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int fromY, int toY, Block keep) {
         for (int y = fromY; y <= toY; y++) {
             BlockState state = level.getBlockState(pos.set(x, y, z));
-            if (!state.isAir() && (!looseOnly || isLoose(state) || state.is(BlockTags.ICE))) {
-                level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+            if (state.isAir()) {
+                continue;
             }
+            if (keep != null) {
+                if (!isLoose(state) && !state.is(BlockTags.ICE)) {
+                    continue;
+                }
+                if (state.is(keep) || state.is(Blocks.SNOW)) {
+                    BlockState below = level.getBlockState(pos.set(x, y - 1, z));
+                    if (!below.isAir() && below.isFaceSturdy(level, pos, Direction.UP)) {
+                        continue;
+                    }
+                    pos.set(x, y, z);
+                }
+            }
+            level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
         }
     }
 

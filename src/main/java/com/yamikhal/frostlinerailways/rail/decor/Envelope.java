@@ -1,6 +1,7 @@
 package com.yamikhal.frostlinerailways.rail.decor;
 
 import com.yamikhal.frostlinerailways.RailwaysConfig;
+import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 
 /**
  * The space trains drive through (RAILWAYS.md §A8.9): on every row of the line, the columns within
@@ -30,6 +31,9 @@ public final class Envelope {
         if (row == null || y < row.bedY() || y >= row.bedY() + height) {
             return false;
         }
-        return Math.abs(x - row.centreX()) <= halfWidth + 0.5;
+        byte type = ctx.layout.type(row.piece());
+        // the layout centre line only approximates the real track on S-bends and diagonal shifts: one more block there
+        double curve = type == RailLayout.BEND || type == RailLayout.SHIFT ? 1.0 : 0.0;
+        return Math.abs(x - row.centreX()) <= halfWidth + 0.5 + curve;
     }
 }

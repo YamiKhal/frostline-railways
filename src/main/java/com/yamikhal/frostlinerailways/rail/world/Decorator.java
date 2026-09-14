@@ -236,6 +236,21 @@ public final class Decorator {
                         tile.kind() == StructurePlanner.Kind.BRIDGE, envelope, pos);
             }
         }
+        int fromZ = chunk.getMinBlockZ();
+        int toZ = chunk.getMaxBlockZ();
+        for (StructurePlanner.SliceRun run : plan.slicesTouching(fromZ, toZ)) {
+            RailTemplates.Structure top = RailTemplates.structure(level.getServer(), run.top());
+            RailTemplates.Structure curve = RailTemplates.structure(level.getServer(), run.topCurve());
+            for (int z = Math.max(fromZ, run.zMin()); z <= Math.min(toZ, run.zMax()); z++) {
+                RailContext.Row row = ctx.row(z);
+                byte type = ctx.layout.type(row.piece());
+                RailTemplates.Structure slice = (type == RailLayout.BEND || type == RailLayout.SHIFT) && curve != null ? curve : top;
+                if (slice != null) {
+                    TemplatePlacer.placeSlice(level, chunk, slice, Math.floorMod(run.zMax() - z, slice.sizeX()), row.trackX(), row.bedY(),
+                            run.trackY(), z, envelope, pos);
+                }
+            }
+        }
     }
 
     // --- stations ------------------------------------------------------------------------------

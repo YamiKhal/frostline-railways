@@ -10,11 +10,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.ToIntFunction;
 
 /**
- * Where tiled structures go along the line (RAILWAYS.md §A8.8, §A8.10): tunnel portals and interiors,
- * covers over deep cuts, bridge structures, built from a style's templates. Computed once per layout, style
- * data, station data and config, from the layout, seed and noise only, so every chunk agrees.
+ * Where structures go along the line (RAILWAYS.md §A8.8, §A8.10, §A8.11): tunnel portals and interiors, covers
+ * over deep cuts, bridges, built from a style's templates. Computed once per layout, style data, station data and
+ * config, from the layout, seed and noise only, so every chunk agrees.
  *
  * Rows are classified, south to north:
  *
@@ -24,21 +25,27 @@ import java.util.Optional;
  *   flat bridge  lower BRIDGE rows
  *   blocked      within 8 blocks of a station, or off the line
  *
- * A stretch is a run of rows of one class on any track piece (straights, S-bends, ramps, diagonal
- * shifts: each tile follows the track at its middle row), in the style of its first row; up to merge_gap
- * rows of no class (and, for full bridges, flat-bridge rows) inside it do not end it. Its variant is picked
- * once, its numbered template files per tile.
+ * A stretch is a run of rows of one class on any track piece, in the style of its first row; up to merge_gap rows
+ * of no class (full bridges: also flat-bridge rows) inside it do not end it. Its variant is picked once; every
+ * template id is resolved through its numbered variations (RailTemplates#pick).
  *
- *   tunnel, cover  start at the south end, middles until the stretch is covered, end at the north end; the
- *                  set is centred and may overhang the stretch onto free rows, middles are dropped if it
- *                  cannot. Without a middle template: start and end at the stretch's ends only.
- *   full bridge    start, as many whole middles as fit (at least bridgeFullMinMiddles), end, centred inside
- *                  the stretch; only if min_length / bridgeFullMinLength ≤ length ≤ max_length and at least
- *                  min_gap blocks past the previous full bridge; otherwise flat
- *   flat bridge    flat tiles covering the stretch, overhanging onto free rows if needed
+ * Two kinds of parts:
  *
- * Every template is placed with its x = 0 edge outward: the start's at the south, the end's at the north,
- * the middles' and flats' at their south edge. Tiles of one stretch never overlap another's.
+ *   tiles   whole templates (start, middle, end, flat), each aligned with the track at its middle row. They
+ *           only go where the track is straight (straights and ramps), except start/end at a stretch's ends.
+ *   slices  per-row parts (top on straight rows, top_curve on S-bends and diagonal shifts): each row places one
+ *           x-slice of the template at that row's own track position, so they follow curves exactly
+ *
+ *   tunnel, cover  start at the south end and end at the north end (if the stretch is at least min_length and
+ *                  both fit); middles fill the straight parts in between; slices (if the variant has a top) take
+ *                  every other row of the stretch
+ *   bridge         slices (top) on every row of the stretch — the deck and railing; below it, if the whole
+ *                  stretch is straight, full bridge rows get start, whole middles, end (length within
+ *                  max(min_length, bridgeFullMinLength) .. max_length, ≥ bridgeFullMinMiddles middles, ≥ min_gap
+ *                  past the previous full bridge); otherwise flat tiles fill the straight parts
+ *
+ * Tiles never overlap; tiles of a kind and slices of that kind never share a row, except bridge slices, which sit
+ * on top of the bridge's tiles.
  */
 public final class StructurePlanner {
 
@@ -48,61 +55,105 @@ public final class StructurePlanner {
                        int trackZ, int trackY, Optional<BlockState> foundation, int foundationDepth) {
     }
 
-    /** The tiles of a line, by z, never overlapping. */
+    /** Rows zMin..zMax each get one x-slice of top (straight rows) or topCurve (curved rows); slice x = (zMax - z) mod length. */
+    public record SliceRun(Kind kind, ResourceLocation top, ResourceLocation topCurve, int zMin, int zMax, int trackY) {
+    }
+
+    /** The tiles and slices of a line. */
     public static final class Plan {
         private final List<Tile> tiles;
-        private final int[] bridgeMin;
-        private final int[] bridgeMax;
+        private final List<SliceRun> slices;
+        private final Intervals bridgeTiles;
+        private final Intervals bridgeTops;
+        private final Intervals covers;
 
-        Plan(List<Tile> tiles) {
+        Plan(List<Tile> tiles, List<SliceRun> slices) {
             this.tiles = List.copyOf(tiles);
-            List<Tile> bridges = tiles.stream().filter(t -> t.kind() == Kind.BRIDGE).toList();
-            bridgeMin = bridges.stream().mapToInt(Tile::zMin).toArray();
-            bridgeMax = bridges.stream().mapToInt(Tile::zMax).toArray();
-        }
-
-        public List<Tile> tiles() {
-            return tiles;
+            this.slices = List.copyOf(slices);
+            bridgeTiles = Intervals.of(tiles.stream().filter(t -> t.kind() == Kind.BRIDGE).toList(), Tile::zMin, Tile::zMax);
+            bridgeTops = Intervals.of(slices.stream().filter(s -> s.kind() == Kind.BRIDGE).toList(), SliceRun::zMin, SliceRun::zMax);
+            List<int[]> coverRows = new ArrayList<>();
+            tiles.stream().filter(t -> t.kind() == Kind.COVER).forEach(t -> coverRows.add(new int[] {t.zMin(), t.zMax()}));
+            slices.stream().filter(s -> s.kind() == Kind.COVER).forEach(s -> coverRows.add(new int[] {s.zMin(), s.zMax()}));
+            covers = Intervals.of(coverRows, r -> r[0], r -> r[1]);
         }
 
         /** Tiles with any row in [minZ, maxZ]. */
         public List<Tile> touching(int minZ, int maxZ) {
-            int lo = 0;
-            int hi = tiles.size();
-            while (lo < hi) {
-                int mid = (lo + hi) >>> 1;
-                if (tiles.get(mid).zMax() < minZ) {
-                    lo = mid + 1;
-                } else {
-                    hi = mid;
+            return within(tiles, Tile::zMin, Tile::zMax, minZ, maxZ);
+        }
+
+        /** Slice runs with any row in [minZ, maxZ]. */
+        public List<SliceRun> slicesTouching(int minZ, int maxZ) {
+            return within(slices, SliceRun::zMin, SliceRun::zMax, minZ, maxZ);
+        }
+
+        /** True if row z is under a bridge tile (the plain bridge's piers are left out there). */
+        public boolean bridgeAt(int z) {
+            return bridgeTiles.contains(z);
+        }
+
+        /** True if row z has a bridge top (the plain bridge's railing is left out there). */
+        public boolean bridgeTopAt(int z) {
+            return bridgeTops.contains(z);
+        }
+
+        /** True if row z has a cover tile or slice (terrain is not smoothed there). */
+        public boolean coverAt(int z) {
+            return covers.contains(z);
+        }
+
+        private static <T> List<T> within(List<T> sorted, ToIntFunction<T> min, ToIntFunction<T> max, int minZ, int maxZ) {
+            List<T> out = new ArrayList<>();
+            for (T item : sorted) {
+                if (min.applyAsInt(item) > maxZ) {
+                    break;
                 }
-            }
-            List<Tile> out = new ArrayList<>();
-            for (int i = lo; i < tiles.size() && tiles.get(i).zMin() <= maxZ; i++) {
-                out.add(tiles.get(i));
+                if (max.applyAsInt(item) >= minZ) {
+                    out.add(item);
+                }
             }
             return out;
         }
+    }
 
-        /** True if row z is under a bridge structure (the plain bridge's piers and railing are left out there). */
-        public boolean bridgeAt(int z) {
+    /** Sorted row intervals, answering "is z in one of them". */
+    private static final class Intervals {
+        private final int[] min;
+        private final int[] max;
+
+        private Intervals(int[] min, int[] max) {
+            this.min = min;
+            this.max = max;
+        }
+
+        static <T> Intervals of(List<T> items, ToIntFunction<T> lo, ToIntFunction<T> hi) {
+            List<T> sorted = new ArrayList<>(items);
+            sorted.sort(Comparator.comparingInt(lo));
+            return new Intervals(sorted.stream().mapToInt(lo).toArray(), sorted.stream().mapToInt(hi).toArray());
+        }
+
+        boolean contains(int z) {
+            // largest start at or below z, then check its end
             int lo = 0;
-            int hi = bridgeMax.length;
-            while (lo < hi) {
+            int hi = min.length - 1;
+            int found = -1;
+            while (lo <= hi) {
                 int mid = (lo + hi) >>> 1;
-                if (bridgeMax[mid] < z) {
+                if (min[mid] <= z) {
+                    found = mid;
                     lo = mid + 1;
                 } else {
-                    hi = mid;
+                    hi = mid - 1;
                 }
             }
-            return lo < bridgeMin.length && bridgeMin[lo] <= z;
+            return found >= 0 && max[found] >= z;
         }
     }
 
     private enum RowKind { NONE, BLOCKED, COVER, BRIDGE_FULL, BRIDGE_FLAT, TUNNEL }
 
-    private static final Plan EMPTY = new Plan(List.of());
+    private static final Plan EMPTY = new Plan(List.of(), List.of());
     private static final int STATION_MARGIN = 8;
     private static final long VARIANT_SALT = 0x7A11_7E57L;
     private static final long TEMPLATE_SALT = 0x7E3A_1A7EL;
@@ -148,8 +199,7 @@ public final class StructurePlanner {
         private final boolean tunnels;
         private final List<StationPlanner.Site> sites;
         private final List<Tile> tiles = new ArrayList<>();
-        /** Tiles of later stretches stay at or north of this z (north = smaller z). */
-        private int ceiling = Integer.MAX_VALUE;
+        private final List<SliceRun> slices = new ArrayList<>();
         private int lastFullNorth = Integer.MAX_VALUE;
 
         Builder(RailContext ctx, MinecraftServer server, boolean covers, boolean bridges, boolean tunnels) {
@@ -185,26 +235,18 @@ public final class StructurePlanner {
                         break;
                     }
                 }
-                int south = Math.min(z, ceiling);
-                if (south >= north) {
-                    RailStyle.Variant variant = spec.pick(ctx.random(VARIANT_SALT, z, kind.ordinal()));
-                    switch (kind) {
-                        case TUNNEL -> sequence(Kind.TUNNEL, spec, variant, south, north);
-                        case COVER -> sequence(Kind.COVER, spec, variant, south, north);
-                        case BRIDGE_FULL -> {
-                            boolean gapOk = lastFullNorth == Integer.MAX_VALUE || lastFullNorth - south - 1 >= spec.minGap();
-                            if (!(gapOk && fullBridge(spec, variant, south, north))) {
-                                flat(spec, variant, south, north);
-                            }
-                        }
-                        case BRIDGE_FLAT -> flat(spec, variant, south, north);
-                        default -> { }
-                    }
+                RailStyle.Parts parts = spec.pick(ctx.random(VARIANT_SALT, z, kind.ordinal()));
+                switch (kind) {
+                    case TUNNEL -> sequence(Kind.TUNNEL, spec, parts, z, north);
+                    case COVER -> sequence(Kind.COVER, spec, parts, z, north);
+                    case BRIDGE_FULL, BRIDGE_FLAT -> bridge(spec, parts, z, north, kind == RowKind.BRIDGE_FULL);
+                    default -> { }
                 }
                 z = north - 1;
             }
             tiles.sort(Comparator.comparingInt(Tile::zMin));
-            return new Plan(tiles);
+            slices.sort(Comparator.comparingInt(SliceRun::zMin));
+            return new Plan(tiles, slices);
         }
 
         private RowKind rowKind(int z) {
@@ -241,6 +283,11 @@ public final class StructurePlanner {
             };
         }
 
+        private boolean straight(int z) {
+            byte type = ctx.layout.type(ctx.row(z).piece());
+            return type == RailLayout.STRAIGHT || type == RailLayout.RAMP;
+        }
+
         private ResourceLocation pick(Optional<ResourceLocation> base, int z, int slot) {
             return base.map(id -> RailTemplates.pick(server, id, ctx.random(TEMPLATE_SALT, z, slot))).orElse(null);
         }
@@ -249,81 +296,77 @@ public final class StructurePlanner {
             return id == null ? null : RailTemplates.structure(server, id);
         }
 
-        /** Consecutive rows from {@code from} in direction {@code dir} a tile may overhang onto, at most {@code max}. */
-        private int freeRun(int from, int dir, int max) {
-            int n = 0;
-            for (int z = from; n < max && z <= ceiling && rowKind(z) != RowKind.BLOCKED; z += dir) {
-                n++;
-            }
-            return n;
-        }
-
-        private void sequence(Kind kind, RailStyle.Tiles spec, RailStyle.Variant v, int south, int north) {
+        /** Tunnels and covers: start and end at the ends, middles on straight parts, slices on the rest. */
+        private void sequence(Kind kind, RailStyle.Tiles spec, RailStyle.Parts parts, int south, int north) {
+            int bodySouth = south;
+            int bodyNorth = north;
             int length = south - north + 1;
-            if (length < spec.minLength()) {
-                return;
-            }
-            ResourceLocation startId = pick(v.start(), south, 1);
-            ResourceLocation endId = pick(v.end(), north, 2);
+            ResourceLocation startId = pick(parts.start(), south, 1);
+            ResourceLocation endId = pick(parts.end(), north, 2);
             RailTemplates.Structure start = load(startId);
             RailTemplates.Structure end = load(endId);
-            if (start == null || end == null) {
-                return;
-            }
-            if (v.middle().isEmpty() && start.sizeX() + end.sizeX() <= length) {
+            if (start != null && end != null && length >= spec.minLength() && start.sizeX() + end.sizeX() <= length) {
                 add(kind, spec, startId, south - start.sizeX() + 1, south, south, -1);
                 add(kind, spec, endId, north, north + end.sizeX() - 1, north, 1);
-                ceiling = Math.min(ceiling, north - 1);
-                return;
+                bodySouth = south - start.sizeX();
+                bodyNorth = north + end.sizeX();
             }
-            List<ResourceLocation> ids = new ArrayList<>(List.of(startId));
-            List<RailTemplates.Structure> parts = new ArrayList<>(List.of(start));
-            int total = start.sizeX() + end.sizeX();
-            for (int i = 0; v.middle().isPresent() && total < length; i++) {
-                ResourceLocation id = pick(v.middle(), south, 10 + i);
-                RailTemplates.Structure middle = load(id);
-                if (middle == null) {
-                    break;
+            List<int[]> taken = new ArrayList<>();
+            if (parts.middle().isPresent()) {
+                for (int[] run : straightRuns(bodySouth, bodyNorth)) {
+                    int[] filled = fill(kind, spec, parts.middle(), run[0], run[1], 10);
+                    if (filled != null) {
+                        taken.add(filled);
+                    }
                 }
-                ids.add(id);
-                parts.add(middle);
-                total += middle.sizeX();
             }
-            ids.add(endId);
-            parts.add(end);
-            while (!lay(kind, spec, ids, parts, true, south, north, true)) {
-                if (parts.size() <= 2) {
+            sliceGaps(kind, spec, parts, bodySouth, bodyNorth, taken);
+        }
+
+        /** Bridges: tops on every row; below, the full set on straight full-height stretches, else flat tiles on straight parts. */
+        private void bridge(RailStyle.Tiles spec, RailStyle.Parts parts, int south, int north, boolean full) {
+            sliceGaps(Kind.BRIDGE, spec, parts, south, north, List.of());
+            boolean allStraight = true;
+            for (int z = south; z >= north && allStraight; z--) {
+                allStraight = straight(z);
+            }
+            if (full && allStraight) {
+                boolean gapOk = lastFullNorth == Integer.MAX_VALUE || lastFullNorth - south - 1 >= spec.minGap();
+                if (gapOk && fullBridge(spec, parts, south, north)) {
                     return;
                 }
-                ids.remove(ids.size() - 2);
-                parts.remove(parts.size() - 2);
+            }
+            if (parts.flat().isPresent()) {
+                for (int[] run : straightRuns(south, north)) {
+                    fill(Kind.BRIDGE, spec, parts.flat(), run[0], run[1], 40);
+                }
             }
         }
 
-        private boolean fullBridge(RailStyle.Tiles spec, RailStyle.Variant v, int south, int north) {
+        private boolean fullBridge(RailStyle.Tiles spec, RailStyle.Parts parts, int south, int north) {
             int length = south - north + 1;
-            if (length < Math.max(spec.minLength(), RailwaysConfig.bridgeFullMinLength()) || length > spec.maxLength() || v.middle().isEmpty()) {
+            if (length < Math.max(spec.minLength(), RailwaysConfig.bridgeFullMinLength()) || length > spec.maxLength() || parts.middle().isEmpty()) {
                 return false;
             }
-            ResourceLocation startId = pick(v.start(), south, 1);
-            ResourceLocation endId = pick(v.end(), north, 2);
+            ResourceLocation startId = pick(parts.start(), south, 1);
+            ResourceLocation endId = pick(parts.end(), north, 2);
             RailTemplates.Structure start = load(startId);
             RailTemplates.Structure end = load(endId);
             if (start == null || end == null) {
                 return false;
             }
             List<ResourceLocation> ids = new ArrayList<>(List.of(startId));
-            List<RailTemplates.Structure> parts = new ArrayList<>(List.of(start));
+            List<RailTemplates.Structure> chain = new ArrayList<>(List.of(start));
             int total = start.sizeX() + end.sizeX();
             int middles = 0;
             for (int i = 0; ; i++) {
-                ResourceLocation id = pick(v.middle(), south, 10 + i);
+                ResourceLocation id = pick(parts.middle(), south, 10 + i);
                 RailTemplates.Structure middle = load(id);
                 if (middle == null || total + middle.sizeX() > length) {
                     break;
                 }
                 ids.add(id);
-                parts.add(middle);
+                chain.add(middle);
                 total += middle.sizeX();
                 middles++;
             }
@@ -331,74 +374,90 @@ public final class StructurePlanner {
                 return false;
             }
             ids.add(endId);
-            parts.add(end);
-            if (!lay(Kind.BRIDGE, spec, ids, parts, true, south, north, false)) {
-                return false;
-            }
-            lastFullNorth = tiles.get(tiles.size() - 1).zMin();
-            return true;
-        }
-
-        private void flat(RailStyle.Tiles spec, RailStyle.Variant v, int south, int north) {
-            if (v.flat().isEmpty()) {
-                return;
-            }
-            int length = south - north + 1;
-            List<ResourceLocation> ids = new ArrayList<>();
-            List<RailTemplates.Structure> parts = new ArrayList<>();
-            int total = 0;
-            for (int i = 0; total < length; i++) {
-                ResourceLocation id = pick(v.flat(), south, 40 + i);
-                RailTemplates.Structure flat = load(id);
-                if (flat == null) {
-                    return;
-                }
-                ids.add(id);
-                parts.add(flat);
-                total += flat.sizeX();
-            }
-            while (!lay(Kind.BRIDGE, spec, ids, parts, false, south, north, true)) {
-                if (parts.size() <= 1) {
-                    return;
-                }
-                ids.remove(ids.size() - 1);
-                parts.remove(parts.size() - 1);
-            }
-        }
-
-        /**
-         * Lays the parts south to north over [north, south]: centred inside the stretch if they fit, else
-         * (with extend) overhanging onto free rows either side; false if they cannot be placed.
-         */
-        private boolean lay(Kind kind, RailStyle.Tiles spec, List<ResourceLocation> ids, List<RailTemplates.Structure> parts,
-                            boolean endLast, int south, int north, boolean extend) {
-            int length = south - north + 1;
-            int total = parts.stream().mapToInt(RailTemplates.Structure::sizeX).sum();
-            int southEdge;
-            if (total > length) {
-                if (!extend) {
-                    return false;
-                }
-                int extra = total - length;
-                int southFree = freeRun(south + 1, 1, extra);
-                int northFree = freeRun(north - 1, -1, extra);
-                if (southFree + northFree < extra) {
-                    return false;
-                }
-                southEdge = south + Math.min(southFree, Math.max(extra - northFree, extra / 2));
-            } else {
-                southEdge = south - (length - total) / 2;
-            }
-            int top = southEdge;
-            for (int i = 0; i < parts.size(); i++) {
-                int size = parts.get(i).sizeX();
-                boolean end = endLast && i == parts.size() - 1;
+            chain.add(end);
+            int top = south - (length - total) / 2;
+            for (int i = 0; i < chain.size(); i++) {
+                int size = chain.get(i).sizeX();
+                boolean last = i == chain.size() - 1;
                 int zMin = top - size + 1;
-                add(kind, spec, ids.get(i), zMin, top, end ? zMin : top, end ? 1 : -1);
+                add(Kind.BRIDGE, spec, ids.get(i), zMin, top, last ? zMin : top, last ? 1 : -1);
                 top -= size;
             }
-            ceiling = Math.min(ceiling, top);
+            lastFullNorth = top + 1;
             return true;
+        }
+
+        /** Whole templates of one part laid south to north inside [rn, rs], centred; the rows they take, or null. */
+        private int[] fill(Kind kind, RailStyle.Tiles spec, Optional<ResourceLocation> base, int rs, int rn, int slot) {
+            int length = rs - rn + 1;
+            List<ResourceLocation> ids = new ArrayList<>();
+            List<RailTemplates.Structure> chain = new ArrayList<>();
+            int total = 0;
+            for (int i = 0; ; i++) {
+                ResourceLocation id = pick(base, rs, slot + i);
+                RailTemplates.Structure part = load(id);
+                if (part == null || total + part.sizeX() > length) {
+                    break;
+                }
+                ids.add(id);
+                chain.add(part);
+                total += part.sizeX();
+            }
+            if (chain.isEmpty()) {
+                return null;
+            }
+            int top = rs - (length - total) / 2;
+            int first = top;
+            for (int i = 0; i < chain.size(); i++) {
+                int size = chain.get(i).sizeX();
+                add(kind, spec, ids.get(i), top - size + 1, top, top, -1);
+                top -= size;
+            }
+            return new int[] {top + 1, first};
+        }
+
+        /** Runs of straight rows within [north, south], south first, as {south, north}. */
+        private List<int[]> straightRuns(int south, int north) {
+            List<int[]> runs = new ArrayList<>();
+            int runSouth = Integer.MIN_VALUE;
+            for (int z = south; z >= north - 1; z--) {
+                boolean ok = z >= north && straight(z);
+                if (ok && runSouth == Integer.MIN_VALUE) {
+                    runSouth = z;
+                } else if (!ok && runSouth != Integer.MIN_VALUE) {
+                    runs.add(new int[] {runSouth, z + 1});
+                    runSouth = Integer.MIN_VALUE;
+                }
+            }
+            return runs;
+        }
+
+        /** Slice runs over the rows of [north, south] not in taken ({zMin, zMax} ranges), if the parts have a top. */
+        private void sliceGaps(Kind kind, RailStyle.Tiles spec, RailStyle.Parts parts, int south, int north, List<int[]> taken) {
+            if (parts.top().isEmpty() || south < north) {
+                return;
+            }
+            ResourceLocation top = pick(parts.top(), south, 5);
+            ResourceLocation curve = parts.topCurve().isPresent() ? pick(parts.topCurve(), south, 6) : top;
+            if (top == null) {
+                return;
+            }
+            int runSouth = Integer.MIN_VALUE;
+            for (int z = south; z >= north - 1; z--) {
+                boolean free = z >= north;
+                for (int[] range : taken) {
+                    if (z >= range[0] && z <= range[1]) {
+                        free = false;
+                        break;
+                    }
+                }
+                if (free && runSouth == Integer.MIN_VALUE) {
+                    runSouth = z;
+                } else if (!free && runSouth != Integer.MIN_VALUE) {
+                    slices.add(new SliceRun(kind, top, curve == null ? top : curve, z + 1, runSouth, spec.topTrackY()));
+                    runSouth = Integer.MIN_VALUE;
+                }
+            }
         }
 
         private void add(Kind kind, RailStyle.Tiles spec, ResourceLocation id, int zMin, int zMax, int zOrigin, int stepZ) {
