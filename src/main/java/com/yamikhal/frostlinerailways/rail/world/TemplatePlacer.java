@@ -25,8 +25,8 @@ import java.util.Optional;
  *   y = bedY - trackY + ty
  *
  * with block states rotated (and mirrored where the axes flip) to match. Only this chunk's blocks are
- * written, the line's own track block is never touched, and nothing is placed inside the {@link Envelope}
- * trains drive through (the bed baker has already cleared it).
+ * written, the line's own track block is never touched, nor the metal girders under its rails (girderTracks), and
+ * nothing is placed inside the {@link Envelope} trains drive through (the bed baker has already cleared it).
  *
  *   air in the template       becomes air
  *   nothing in the template   keeps the world; with clearEmpty, becomes air at or above track height
@@ -58,7 +58,7 @@ final class TemplatePlacer {
             }
             for (int ty = 0; ty < t.sizeY(); ty++) {
                 int y = baseY + ty;
-                if ((x == trackX && y == bedY) || envelope.contains(x, y, z)) {
+                if ((x == trackX && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(x, y, trackX, bedY)) {
                     continue;
                 }
                 BlockState state = t.state(tx, ty, tz);
@@ -107,7 +107,7 @@ final class TemplatePlacer {
                 boolean trackColumn = x == trackX;
                 for (int ty = 0; ty < t.sizeY(); ty++) {
                     int y = baseY + ty;
-                    if ((trackColumn && y == bedY) || envelope.contains(x, y, z)) {
+                    if ((trackColumn && y == bedY) || envelope.contains(x, y, z) || TrackWriter.isGirderColumn(x, y, trackX, bedY)) {
                         continue;
                     }
                     pos.set(x, y, z);
