@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.sites;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -24,22 +25,22 @@ public record RailSite(List<SiteEntry> structures, Where where, SiteFit fit) {
     public record Where(BiomeFilter biomes, BiomeFilter excludeBiomes, int spacing, int firstAt, float chance, int maxCount,
                         String side, SiteRange distance, List<String> rows, int minSeparation, int stationMargin, int tries) {
         static final MapCodec<Where> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(Where::biomes),
-                BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(Where::excludeBiomes),
-                Codec.intRange(64, 1_000_000).optionalFieldOf("spacing", 800).forGetter(Where::spacing),
-                Codec.intRange(0, 1_000_000).optionalFieldOf("first_at", 400).forGetter(Where::firstAt),
-                Codec.floatRange(0, 1).optionalFieldOf("chance", 1.0F).forGetter(Where::chance),
-                Codec.intRange(-1, 1_000_000).optionalFieldOf("max_count", -1).forGetter(Where::maxCount),
-                Codec.STRING.optionalFieldOf("side", "random").forGetter(Where::side),
-                SiteRange.codec(0, 512).optionalFieldOf("distance", new SiteRange(24, 64)).forGetter(Where::distance),
-                Codec.STRING.listOf().optionalFieldOf("rows", List.of("open", "bridge")).forGetter(Where::rows),
-                Codec.intRange(0, 4096).optionalFieldOf("min_separation", 96).forGetter(Where::minSeparation),
-                Codec.intRange(0, 4096).optionalFieldOf("station_margin", 64).forGetter(Where::stationMargin),
-                Codec.intRange(1, 64).optionalFieldOf("tries", 8).forGetter(Where::tries)
+                StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(Where::biomes),
+                StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(Where::excludeBiomes),
+                StrictFields.optional(Codec.intRange(64, 1_000_000), "spacing", 800).forGetter(Where::spacing),
+                StrictFields.optional(Codec.intRange(0, 1_000_000), "first_at", 400).forGetter(Where::firstAt),
+                StrictFields.optional(Codec.floatRange(0, 1), "chance", 1.0F).forGetter(Where::chance),
+                StrictFields.optional(Codec.intRange(-1, 1_000_000), "max_count", -1).forGetter(Where::maxCount),
+                StrictFields.optional(StrictFields.oneOf("east", "west", "alternate", "random", "both"), "side", "random").forGetter(Where::side),
+                StrictFields.optional(SiteRange.codec(0, 512), "distance", new SiteRange(24, 64)).forGetter(Where::distance),
+                StrictFields.optional(StrictFields.oneOf("open", "cut", "bridge", "tunnel").listOf(), "rows", List.of("open", "bridge")).forGetter(Where::rows),
+                StrictFields.optional(Codec.intRange(0, 4096), "min_separation", 96).forGetter(Where::minSeparation),
+                StrictFields.optional(Codec.intRange(0, 4096), "station_margin", 64).forGetter(Where::stationMargin),
+                StrictFields.optional(Codec.intRange(1, 64), "tries", 8).forGetter(Where::tries)
         ).apply(i, Where::new));
     }
 
-    public static final Codec<RailSite> CODEC = RecordCodecBuilder.create(i -> i.group(
+    public static final Codec<RailSite> CODEC = StrictFields.record(i -> i.group(
             SiteEntry.CODEC.listOf().fieldOf("structures").forGetter(RailSite::structures),
             Where.CODEC.forGetter(RailSite::where),
             SiteFit.CODEC.forGetter(RailSite::fit)

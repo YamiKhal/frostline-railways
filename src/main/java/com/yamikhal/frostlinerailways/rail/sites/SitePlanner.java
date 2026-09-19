@@ -89,6 +89,8 @@ final class SitePlanner {
     private final Map<Long, Integer> surface = new HashMap<>();
     private final Map<Long, Integer> floor = new HashMap<>();
     private final Map<String, Integer> failures = new TreeMap<>();
+    /** Structures seen not to turn with the generation random: no facing search for them (SiteGenerator#facing). */
+    private final Set<ResourceLocation> fixedRotation = new HashSet<>();
     private int groups;
 
     private SitePlanner(ServerLevel level, RailLayout layout, RailLineDef def) {
@@ -109,6 +111,7 @@ final class SitePlanner {
         List<StationPlanner.Site> stationSites = StationPlanner.sites(planner.ctx);
         planner.footprints(stationSites);
         if (sites) {
+            planner.validate();
             planner.districts(stationSites);
             planner.lineSites(stationSites);
         }
@@ -124,6 +127,68 @@ final class SitePlanner {
                 counts[SitePlan.Kind.LINE.ordinal()], counts[SitePlan.Kind.CORE.ordinal()], counts[SitePlan.Kind.OUTER.ordinal()],
                 districts, stationSites.size(), millis, planner.failures);
         return plan;
+    }
+
+    // --- data checks ---------------------------------------------------------------------------
+
+    /**
+     * Mistakes the planner would otherwise only show as rejected spots: structure ids that are not registered, station
+     * ids that match no station file, empty structure lists. Logged once each; the data still loads.
+     */
+    private void validate() {
+        Registry<Biome> biomes = env.access().registryOrThrow(Registries.BIOME);
+        for (RailDecorData.Entry<RailSite> entry : RailDecorData.SITES.entries()) {
+            checkBiomes("site " + entry.id(), biomes, entry.value().where().biomes(), entry.value().where().excludeBiomes());
+            entry.value().structures().forEach(e -> checkBiomes("site " + entry.id(), biomes, e.biomes(), e.excludeBiomes()));
+        }
+        for (RailDecorData.Entry<RailDistrict> entry : RailDecorData.DISTRICTS.entries()) {
+            RailDistrict d = entry.value();
+            checkBiomes("district " + entry.id(), biomes, d.match().biomes(), d.match().excludeBiomes());
+            d.core().ifPresent(c -> c.structures().forEach(e -> checkBiomes("district " + entry.id(), biomes, e.biomes(), e.excludeBiomes())));
+            d.outer().ifPresent(o -> o.structures().forEach(e -> checkBiomes("district " + entry.id(), biomes, e.biomes(), e.excludeBiomes())));
+        }
+        Set<ResourceLocation> stationIds = new HashSet<>();
+        RailDecorData.STATIONS.entries().forEach(e -> stationIds.add(e.id()));
+        for (RailDecorData.Entry<RailSite> entry : RailDecorData.SITES.entries()) {
+            checkEntries("site " + entry.id(), entry.value().structures());
+        }
+        for (RailDecorData.Entry<RailDistrict> entry : RailDecorData.DISTRICTS.entries()) {
+            RailDistrict district = entry.value();
+            for (ResourceLocation station : district.match().stations()) {
+                if (!stationIds.contains(station)) {
+                    SiteGenerator.warnOnce("station " + entry.id() + station, "[FrostlineRailways] district {} names station {}, "
+                            + "which is no frostline_rail/station file (known: {})", entry.id(), station, stationIds);
+                }
+            }
+            district.core().ifPresent(core -> checkEntries("district " + entry.id() + " core", core.structures()));
+            district.outer().ifPresent(outer -> checkEntries("district " + entry.id() + " outer", outer.structures()));
+            if (district.core().isEmpty() && (district.outer().isPresent() || district.station().isPresent())) {
+                SiteGenerator.warnOnce("nocore " + entry.id(), "[FrostlineRailways] district {} has no core, so it is the "
+                        + "\"nothing here\" choice: its outer and station fields are never used", entry.id());
+            }
+        }
+    }
+
+    private static void checkBiomes(String owner, Registry<Biome> registry, BiomeFilter... filters) {
+        for (BiomeFilter filter : filters) {
+            List<String> unknown = filter.unknownIn(registry);
+            if (!unknown.isEmpty()) {
+                SiteGenerator.warnOnce("biomes " + owner + unknown, "[FrostlineRailways] {}: biomes {} do not exist (no such biome or "
+                        + "biome tag); they match nothing", owner, unknown);
+            }
+        }
+    }
+
+    private void checkEntries(String owner, List<SiteEntry> entries) {
+        if (entries.isEmpty()) {
+            SiteGenerator.warnOnce("empty " + owner, "[FrostlineRailways] {} has an empty structures list", owner);
+        }
+        for (SiteEntry entry : entries) {
+            if (registry.getHolder(ResourceKey.create(Registries.STRUCTURE, entry.structure())).isEmpty()) {
+                SiteGenerator.warnOnce("unknown " + entry.structure(), "[FrostlineRailways] {}: structure {} is not a "
+                        + "worldgen/structure in any datapack; it is never placed", owner, entry.structure());
+            }
+        }
     }
 
     // --- stations ------------------------------------------------------------------------------
@@ -308,7 +373,7 @@ final class SitePlanner {
                     continue;
                 }
                 Rotation wanted = rotation(outer.fit(), "core", sign, ax, az, (int) cx, (int) cz, ctx.random(salt, site.zCentre(), 4000 + key));
-                SiteGenerator.Result result = SiteGenerator.facing(env, structure, chunkAt(ax, az), seed(salt, site.zCentre(), key), wanted);
+                SiteGenerator.Result result = SiteGenerator.facing(env, structure, chunkAt(ax, az), seed(salt, site.zCentre(), key), wanted, fixedRotation);
                 if (result == null) {
                     fail("outer_generation");
                     continue;
@@ -336,11 +401,11 @@ final class SitePlanner {
             RailSite def = entry.value();
             RailSite.Where where = def.where();
             long salt = entry.id().toString().hashCode();
-            int bandFloor = ctx.def.bed().halfWidth() + clearance + 1;
-            SiteRange range = where.distance().atLeast(bandFloor, MIN_BAND);
+            // at least MIN_BAND wide (16-block steps); each spot raises min to clear the band at its own row
+            SiteRange range = where.distance().atLeast(where.distance().min(), MIN_BAND);
             if (!range.equals(where.distance())) {
                 SiteGenerator.warnOnce("range " + entry.id(), "[FrostlineRailways] site {}: distance {} widened to {} "
-                        + "(at least {} to clear the track band, at least {} wide for 16-block steps)", entry.id(), where.distance(), range, bandFloor, MIN_BAND);
+                        + "(structures move in 16-block steps)", entry.id(), where.distance(), range);
             }
             int step = Math.max(8, where.spacing() / 2 / where.tries());
             int count = 0;
@@ -395,7 +460,8 @@ final class SitePlanner {
                 fail("line_row");
                 continue;
             }
-            int distance = range.roll(ctx.random(salt, key, 3));
+            SiteRange spot = range.atLeast(LineBand.halfWidth(ctx, row) + clearance + 1, MIN_BAND);
+            int distance = spot.roll(ctx.random(salt, key, 3));
             int anchorX = row.trackX() + sign * (distance + GUESS);
             Holder<Biome> anchorBiome = biomeAt(anchorX, z);
             if (!BiomeFilter.allows(where.biomes(), where.excludeBiomes(), anchorBiome)) {
@@ -408,7 +474,7 @@ final class SitePlanner {
                 continue;
             }
             Rotation wanted = rotation(def.fit(), "track", sign, anchorX, z, 0, 0, ctx.random(salt, key, 5));
-            SiteGenerator.Result result = shifted("line_", structure, anchorX, z, sign, wanted, seed(salt, slot, key), measure, distance, range);
+            SiteGenerator.Result result = shifted("line_", structure, anchorX, z, sign, wanted, seed(salt, slot, key), measure, distance, spot);
             if (result == null) {
                 continue;
             }
@@ -474,7 +540,7 @@ final class SitePlanner {
      */
     private SiteGenerator.Result shifted(String prefix, Holder.Reference<Structure> structure, int anchorX, int anchorZ, int sign,
                                          Rotation wanted, long seed, ToIntFunction<BoundingBox> measure, int target, SiteRange range) {
-        SiteGenerator.Result result = SiteGenerator.facing(env, structure, chunkAt(anchorX, anchorZ), seed, wanted);
+        SiteGenerator.Result result = SiteGenerator.facing(env, structure, chunkAt(anchorX, anchorZ), seed, wanted, fixedRotation);
         if (result == null) {
             fail(prefix + "generation");
             return null;
@@ -570,14 +636,13 @@ final class SitePlanner {
 
     /**
      * A line of sight from an eye EYE above the track (at the box's middle row and 48 blocks either way) to a point EYE
-     * above the ground at the middle of the box's near face clears the noise terrain. Columns the line clears beside
-     * the track (bed, cleared width) are not tested.
+     * above the ground at the middle of the box's near face clears the noise terrain. Columns within the rail works
+     * (bed, cut slopes, cleared strip: LineBand) are not tested; the line lowers them itself.
      */
     private boolean visible(BoundingBox box, int sign) {
         int zt = (box.minZ() + box.maxZ()) / 2;
         int xt = sign > 0 ? box.minX() : box.maxX();
         int yt = Math.max(surface(xt, zt), box.minY()) + EYE;
-        int cleared = ctx.def.bed().halfWidth() + (RailwaysConfig.clearAboveTrack() ? RailwaysConfig.clearExtraWidth() : 0) + 1;
         for (int offset : EYE_OFFSETS) {
             int ze = Math.max(layout.zNorthEnd(), Math.min(layout.zSouthEnd(), zt + offset));
             RailContext.Row eye = ctx.row(ze);
@@ -592,7 +657,8 @@ final class SitePlanner {
                 double x = xe + dx * f;
                 int z = (int) Math.round(ze + dz * f);
                 RailContext.Row row = z <= layout.zSouthEnd() && z >= layout.zNorthEnd() ? ctx.row(z) : null;
-                if (row != null && Math.abs(x - row.centreX()) <= cleared) {
+                // the line cuts these columns down itself (bed, cut slopes, cleared strip)
+                if (row != null && Math.abs(x - row.centreX()) <= LineBand.halfWidth(ctx, row)) {
                     continue;
                 }
                 if (surface((int) Math.floor(x), z) > ye + (yt - ye) * f + 1) {

@@ -94,7 +94,12 @@ final class SiteGenerator {
      * is a one-in-four chance. If none matches, the first seed that generated is used. Structures whose rotation never
      * changes with the seed (they roll it from their own random) are logged once: facing cannot apply to them.
      */
-    static Result facing(Env env, Holder.Reference<Structure> structure, ChunkPos chunk, long base, Rotation wanted) {
+    static Result facing(Env env, Holder.Reference<Structure> structure, ChunkPos chunk, long base, Rotation wanted,
+                         Set<ResourceLocation> fixedRotation) {
+        if (wanted != null && fixedRotation.contains(structure.key().location())) {
+            // known not to turn: one generation instead of FACING_TRIES
+            wanted = null;
+        }
         Result first = null;
         int failed = 0;
         boolean turns = false;
@@ -118,9 +123,12 @@ final class SiteGenerator {
                 turns = true;
             }
         }
-        if (generated >= 4 && !turns && WARNED.add("facing " + structure.key().location())) {
-            LOGGER.info("[FrostlineRailways] rail site structure {} does not turn with its generation random; facing is ignored for it "
-                    + "(use a minecraft:jigsaw structure to face it)", structure.key().location());
+        if (generated >= 4 && !turns) {
+            fixedRotation.add(structure.key().location());
+            if (WARNED.add("facing " + structure.key().location())) {
+                LOGGER.info("[FrostlineRailways] rail site structure {} does not turn with its generation random; facing is ignored for it "
+                        + "(use a minecraft:jigsaw structure to face it)", structure.key().location());
+            }
         }
         return first;
     }
@@ -131,6 +139,10 @@ final class SiteGenerator {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
         return z ^ (z >>> 31);
+    }
+
+    static void clearWarnings() {
+        WARNED.clear();
     }
 
     static void warnOnce(String key, String message, Object... args) {

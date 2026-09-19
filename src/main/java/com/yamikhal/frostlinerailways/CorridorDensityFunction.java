@@ -44,20 +44,20 @@ public record CorridorDensityFunction(
 ) implements DensityFunction.SimpleFunction {
 
     public static final KeyDispatchDataCodec<CorridorDensityFunction> CODEC =
-            KeyDispatchDataCodec.of(RecordCodecBuilder.mapCodec(instance -> instance.group(
+            KeyDispatchDataCodec.of(StrictFields.closed(RecordCodecBuilder.mapCodec(instance -> instance.group(
                     DensityFunction.NoiseHolder.CODEC.fieldOf("noise")
                             .forGetter(CorridorDensityFunction::noise),
-                    Codec.DOUBLE.optionalFieldOf("center_x", 0.0D)
+                    StrictFields.optional(Codec.DOUBLE, "center_x", 0.0D)
                             .forGetter(CorridorDensityFunction::centerX),
-                    Codec.doubleRange(0.0D, 8192.0D).optionalFieldOf("amplitude", 450.0D)
+                    StrictFields.optional(Codec.doubleRange(0.0D, 8192.0D), "amplitude", 450.0D)
                             .forGetter(CorridorDensityFunction::amplitude),
-                    Codec.doubleRange(64.0D, 1.0E6D).optionalFieldOf("wavelength", 4000.0D)
+                    StrictFields.optional(Codec.doubleRange(64.0D, 1.0E6D), "wavelength", 4000.0D)
                             .forGetter(CorridorDensityFunction::wavelength),
-                    Codec.doubleRange(0.0D, 4096.0D).optionalFieldOf("inner_width", 48.0D)
+                    StrictFields.optional(Codec.doubleRange(0.0D, 4096.0D), "inner_width", 48.0D)
                             .forGetter(CorridorDensityFunction::innerWidth),
-                    Codec.doubleRange(1.0D, 4096.0D).optionalFieldOf("outer_width", 240.0D)
+                    StrictFields.optional(Codec.doubleRange(1.0D, 4096.0D), "outer_width", 240.0D)
                             .forGetter(CorridorDensityFunction::outerWidth)
-            ).apply(instance, CorridorDensityFunction::new)));
+            ).apply(instance, CorridorDensityFunction::new))));
 
     private static final Map<RandomState, Optional<CorridorDensityFunction>> BY_STATE =
             Collections.synchronizedMap(new WeakHashMap<>());

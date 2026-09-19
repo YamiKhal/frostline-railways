@@ -40,7 +40,7 @@ public record ReliefCapDensityFunction(
 ) implements DensityFunction {
 
     public static final KeyDispatchDataCodec<ReliefCapDensityFunction> CODEC =
-            KeyDispatchDataCodec.of(RecordCodecBuilder.mapCodec(instance -> instance.group(
+            KeyDispatchDataCodec.of(StrictFields.closed(RecordCodecBuilder.mapCodec(instance -> instance.group(
                     DensityFunction.HOLDER_HELPER_CODEC.fieldOf("input")
                             .forGetter(ReliefCapDensityFunction::input),
                     DensityFunction.HOLDER_HELPER_CODEC.fieldOf("weight")
@@ -49,15 +49,15 @@ public record ReliefCapDensityFunction(
                             .forGetter(ReliefCapDensityFunction::target),
                     Codec.doubleRange(0.0D, 1.0D).fieldOf("strength")
                             .forGetter(ReliefCapDensityFunction::strength),
-                    Codec.INT.optionalFieldOf("from_y", -64)
+                    StrictFields.optional(Codec.INT, "from_y", -64)
                             .forGetter(ReliefCapDensityFunction::fromY),
-                    Codec.INT.optionalFieldOf("to_y", 320)
+                    StrictFields.optional(Codec.INT, "to_y", 320)
                             .forGetter(ReliefCapDensityFunction::toY),
-                    Codec.DOUBLE.optionalFieldOf("from_value", 1.5D)
+                    StrictFields.optional(Codec.DOUBLE, "from_value", 1.5D)
                             .forGetter(ReliefCapDensityFunction::fromValue),
-                    Codec.DOUBLE.optionalFieldOf("to_value", -1.5D)
+                    StrictFields.optional(Codec.DOUBLE, "to_value", -1.5D)
                             .forGetter(ReliefCapDensityFunction::toValue)
-            ).apply(instance, ReliefCapDensityFunction::new)));
+            ).apply(instance, ReliefCapDensityFunction::new))));
 
     @Override
     public double compute(FunctionContext ctx) {

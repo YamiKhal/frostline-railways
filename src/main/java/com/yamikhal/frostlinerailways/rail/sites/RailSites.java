@@ -10,6 +10,7 @@ import com.yamikhal.frostlinerailways.rail.decor.RailStation;
 import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayoutService;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.SectionPos;
@@ -40,8 +41,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *   plan          the world's {@link SitePlan}, built on first use by whichever thread asks (the others wait), rebuilt
  *                 when the layout or the station/site/district data are replaced (/reload, layout rebuild)
  *   createStarts  ChunkGenerator#createStructures, after vanilla's: the rail sites that start in this chunk
- *   exclude       Structure#generate, on its result: drop a structure start that comes too near the track, a station
- *                 or a rail site
+ *   filter        ChunkGenerator#tryGenerateStructure, on the start it made: drop it when it comes too near the track,
+ *                 a station or a rail site (enter/leave bracket the call)
  *
  * Only for the line's level: everything is keyed on the level's RandomState, so other dimensions (and worlds without
  * a line, or without Create) pass straight through.
@@ -68,8 +69,10 @@ public final class RailSites {
         if (layout == null || level == null || def == null) {
             return null;
         }
+        // lists by identity (replaced on /reload), settings by value (config edits while running)
         Object[] owners = {layout, RailDecorData.STATIONS.entries(), RailDecorData.SITES.entries(), RailDecorData.DISTRICTS.entries(),
-                RailwaysConfig.railSites(), RailDecorData.STYLES.entries()};
+                RailDecorData.STYLES.entries(), RailwaysConfig.railSites(), RailwaysConfig.clearance(), RailwaysConfig.siteMargin(),
+                RailwaysConfig.trainHalfWidth(), RailwaysConfig.clearAboveTrack(), RailwaysConfig.clearExtraWidth()};
         SitePlan current = plan;
         if (current != null && current.ownedBy(owners)) {
             return current;
@@ -143,52 +146,67 @@ public final class RailSites {
         }
     }
 
+    /** What {@code tryGenerateStructure} is working on, for {@link #filter}; one per worldgen thread. */
+    private record Attempt(Holder<Structure> structure, RegistryAccess access, RandomState random, long seed) {
+    }
+
+    private static final ThreadLocal<Attempt> ATTEMPT = new ThreadLocal<>();
+
+    /** ChunkGenerator#tryGenerateStructure starts: remember the structure set entry being tried. */
+    public static void enter(Holder<Structure> structure, RegistryAccess access, RandomState random, long seed) {
+        ATTEMPT.set(new Attempt(structure, access, random, seed));
+    }
+
+    /** ChunkGenerator#tryGenerateStructure returns (every exit). */
+    public static void leave() {
+        ATTEMPT.remove();
+    }
+
     /**
-     * True if a freshly generated structure start in the line's level must be dropped: it comes within the band
-     * (bed half width + clearance, at the heights the rail works on), or it is tagged #frostline:rail/avoid and comes
-     * within bed half width + avoidMargin (every height), or it comes within siteMargin of a station or a rail site.
-     * Rail sites themselves never pass through here (see {@link #createStarts}).
+     * The start {@code tryGenerateStructure} just generated, or an invalid start if it must be dropped: it comes within
+     * the band (works half width + clearance, at the heights the rail works on; LineBand), or it is tagged
+     * #frostline:rail/avoid and comes within works half width + avoidMargin (every height), or one of its pieces comes within siteMargin of a station
+     * or a rail site. Rail sites never pass through here (see {@link #createStarts}).
      */
-    public static boolean exclude(Structure structure, RegistryAccess access, ChunkGenerator generator, RandomState random, long seed,
-                                  StructureStart start) {
-        if (!FrostlineRailways.createLoaded() || !RailwaysConfig.exclusion()) {
-            return false;
+    public static StructureStart filter(StructureStart start, ChunkGenerator generator) {
+        Attempt attempt = ATTEMPT.get();
+        if (attempt == null || start == null || !start.isValid() || start.getReferences() != 0
+                || !FrostlineRailways.createLoaded() || !RailwaysConfig.exclusion()) {
+            return start;
         }
-        RailLayout layout = RailLayoutService.layoutFor(random);
+        RailLayout layout = RailLayoutService.layoutFor(attempt.random());
         RailLineDef def = RailLayoutService.definition();
         if (layout == null || def == null) {
-            return false;
+            return start;
         }
+        Structure structure = attempt.structure().value();
         // already widened by the structure's terrain adaptation (StructureStart#getBoundingBox)
         BoundingBox whole = start.getBoundingBox();
         int clearance = RailwaysConfig.clearance();
         int avoidMargin = RailwaysConfig.avoidMargin();
-        // widest the line reaches from its centre: bed or tunnel half width (6 at most in the codecs) plus a curve
-        int reach = 8 + Math.max(clearance, avoidMargin);
+        boolean avoid = attempt.structure().is(AVOID);
+        // coarse reach: the widest works half width anywhere on the line, plus the margin, plus rounding
+        int reach = LineBand.maxHalfWidth(def) + 2 + (avoid ? Math.max(clearance, avoidMargin) : clearance);
         if (layout.touches(whole.minX(), whole.maxX(), whole.minZ(), whole.maxZ(), reach) && near(layout, whole, reach)) {
-            RailContext ctx = new RailContext(seed, generator, random, layout, def);
-            boolean avoid = access.registry(Registries.STRUCTURE)
-                    .flatMap(registry -> registry.getResourceKey(structure).flatMap(registry::getHolder))
-                    .map(holder -> holder.is(AVOID))
-                    .orElse(false);
+            RailContext ctx = new RailContext(attempt.seed(), generator, attempt.random(), layout, def);
             for (StructurePiece piece : start.getPieces()) {
                 BoundingBox box = structure.adjustBoundingBox(piece.getBoundingBox());
                 if ((avoid && LineBand.hits(ctx, box, avoidMargin, false)) || LineBand.hits(ctx, box, clearance, true)) {
-                    return dropped(structure, access, start, avoid ? "avoid margin" : "track band");
+                    return dropped(attempt, start, avoid ? "avoid margin" : "track band");
                 }
             }
         }
-        SitePlan current = plan(random);
+        SitePlan current = plan(attempt.random());
         int siteMargin = RailwaysConfig.siteMargin();
         if (current != null && current.guardedNear(whole, siteMargin)) {
             // the whole box is near: test piece by piece, so a mineshaft passing deep below a station survives
             for (StructurePiece piece : start.getPieces()) {
                 if (current.guardedNear(structure.adjustBoundingBox(piece.getBoundingBox()), siteMargin)) {
-                    return dropped(structure, access, start, "station or rail site");
+                    return dropped(attempt, start, "station or rail site");
                 }
             }
         }
-        return false;
+        return start;
     }
 
     /**
@@ -206,12 +224,21 @@ public final class RailSites {
         return box.maxX() >= centre - slack && box.minX() <= centre + slack;
     }
 
-    private static boolean dropped(Structure structure, RegistryAccess access, StructureStart start, String why) {
+    private static StructureStart dropped(Attempt attempt, StructureStart start, String why) {
         long n = DROPPED.incrementAndGet();
         if (RailwaysConfig.railPerfLogging()) {
-            ResourceLocation id = access.registry(Registries.STRUCTURE).map(r -> r.getKey(structure)).orElse(null);
-            LOGGER.info("[railperf] structure {} at chunk {} dropped near the rail line ({}); {} dropped so far", id, start.getChunkPos(), why, n);
+            LOGGER.info("[railperf] structure {} at chunk {} dropped near the rail line ({}); {} dropped so far",
+                    attempt.structure().unwrapKey().map(k -> k.location().toString()).orElse("?"), start.getChunkPos(), why, n);
         }
-        return true;
+        return StructureStart.INVALID_START;
+    }
+
+    /** Forget everything about the world (server stopped): plan, counters, one-time warnings. */
+    public static void clear() {
+        synchronized (RailSites.class) {
+            plan = null;
+        }
+        DROPPED.set(0);
+        SiteGenerator.clearWarnings();
     }
 }

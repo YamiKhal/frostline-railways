@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.decor;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -34,27 +35,27 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
                         Optional<Tiles> tunnelTiles, Optional<CoverLayer> coverLayer, List<RailAddition> additions) {
 
     public record Bed(BlockState ballast, BlockState fill, Optional<BlockState> shoulder) {
-        static final Codec<Bed> CODEC = RecordCodecBuilder.create(i -> i.group(
-                BlockState.CODEC.optionalFieldOf("ballast", Blocks.GRAVEL.defaultBlockState()).forGetter(Bed::ballast),
-                BlockState.CODEC.optionalFieldOf("fill", Blocks.COBBLESTONE.defaultBlockState()).forGetter(Bed::fill),
-                BlockState.CODEC.optionalFieldOf("shoulder").forGetter(Bed::shoulder)
+        static final Codec<Bed> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(BlockState.CODEC, "ballast", Blocks.GRAVEL.defaultBlockState()).forGetter(Bed::ballast),
+                StrictFields.optional(BlockState.CODEC, "fill", Blocks.COBBLESTONE.defaultBlockState()).forGetter(Bed::fill),
+                StrictFields.optional(BlockState.CODEC, "shoulder").forGetter(Bed::shoulder)
         ).apply(i, Bed::new));
     }
 
     public record Bridge(BlockState deck, BlockState pier, Optional<BlockState> railing) {
-        static final Codec<Bridge> CODEC = RecordCodecBuilder.create(i -> i.group(
-                BlockState.CODEC.optionalFieldOf("deck", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Bridge::deck),
-                BlockState.CODEC.optionalFieldOf("pier", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Bridge::pier),
-                BlockState.CODEC.optionalFieldOf("railing").forGetter(Bridge::railing)
+        static final Codec<Bridge> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(BlockState.CODEC, "deck", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Bridge::deck),
+                StrictFields.optional(BlockState.CODEC, "pier", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Bridge::pier),
+                StrictFields.optional(BlockState.CODEC, "railing").forGetter(Bridge::railing)
         ).apply(i, Bridge::new));
     }
 
     public record Tunnel(int halfWidth, int height, Optional<BlockState> lining, Optional<BlockState> portal) {
-        static final Codec<Tunnel> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.intRange(1, 8).optionalFieldOf("half_width", 2).forGetter(Tunnel::halfWidth),
-                Codec.intRange(3, 16).optionalFieldOf("height", 5).forGetter(Tunnel::height),
-                BlockState.CODEC.optionalFieldOf("lining").forGetter(Tunnel::lining),
-                BlockState.CODEC.optionalFieldOf("portal").forGetter(Tunnel::portal)
+        static final Codec<Tunnel> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(Codec.intRange(1, 8), "half_width", 2).forGetter(Tunnel::halfWidth),
+                StrictFields.optional(Codec.intRange(3, 16), "height", 5).forGetter(Tunnel::height),
+                StrictFields.optional(BlockState.CODEC, "lining").forGetter(Tunnel::lining),
+                StrictFields.optional(BlockState.CODEC, "portal").forGetter(Tunnel::portal)
         ).apply(i, Tunnel::new));
     }
 
@@ -74,15 +75,15 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
     public record Parts(int weight, Optional<ResourceLocation> start, Optional<ResourceLocation> middle, Optional<ResourceLocation> end,
                         Optional<ResourceLocation> flat, Optional<ResourceLocation> top, Optional<ResourceLocation> topCurve) {
         static final MapCodec<Parts> MAP_CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                Codec.intRange(0, 1_000_000).optionalFieldOf("weight", 1).forGetter(Parts::weight),
-                ResourceLocation.CODEC.optionalFieldOf("start").forGetter(Parts::start),
-                ResourceLocation.CODEC.optionalFieldOf("middle").forGetter(Parts::middle),
-                ResourceLocation.CODEC.optionalFieldOf("end").forGetter(Parts::end),
-                ResourceLocation.CODEC.optionalFieldOf("flat").forGetter(Parts::flat),
-                ResourceLocation.CODEC.optionalFieldOf("top").forGetter(Parts::top),
-                ResourceLocation.CODEC.optionalFieldOf("top_curve").forGetter(Parts::topCurve)
+                StrictFields.optional(Codec.intRange(0, 1_000_000), "weight", 1).forGetter(Parts::weight),
+                StrictFields.optional(ResourceLocation.CODEC, "start").forGetter(Parts::start),
+                StrictFields.optional(ResourceLocation.CODEC, "middle").forGetter(Parts::middle),
+                StrictFields.optional(ResourceLocation.CODEC, "end").forGetter(Parts::end),
+                StrictFields.optional(ResourceLocation.CODEC, "flat").forGetter(Parts::flat),
+                StrictFields.optional(ResourceLocation.CODEC, "top").forGetter(Parts::top),
+                StrictFields.optional(ResourceLocation.CODEC, "top_curve").forGetter(Parts::topCurve)
         ).apply(i, Parts::new));
-        static final Codec<Parts> CODEC = MAP_CODEC.codec();
+        static final Codec<Parts> CODEC = StrictFields.closed(MAP_CODEC).codec();
 
         Parts orElse(Parts base) {
             return new Parts(weight, start.or(base::start), middle.or(base::middle), end.or(base::end), flat.or(base::flat),
@@ -112,19 +113,19 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
                          int minGap, int mergeGap, Optional<BlockState> foundation, int foundationDepth, int tunnelMargin,
                          int connectGap) {
         static final MapCodec<Params> MAP_CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                Codec.intRange(0, 256).optionalFieldOf("track_z", 4).forGetter(Params::trackZ),
-                Codec.intRange(0, 64).optionalFieldOf("track_y", 1).forGetter(Params::trackY),
-                Codec.intRange(0, 64).optionalFieldOf("top_track_y", 1).forGetter(Params::topTrackY),
-                Codec.intRange(1, 256).optionalFieldOf("min_depth", 5).forGetter(Params::minDepth),
-                Codec.intRange(1, 256).optionalFieldOf("min_height", 6).forGetter(Params::minHeight),
-                Codec.intRange(1, 100_000).optionalFieldOf("min_length", 12).forGetter(Params::minLength),
-                Codec.intRange(1, 100_000).optionalFieldOf("max_length", 160).forGetter(Params::maxLength),
-                Codec.intRange(0, 100_000).optionalFieldOf("min_gap", 96).forGetter(Params::minGap),
-                Codec.intRange(0, 256).optionalFieldOf("merge_gap", 4).forGetter(Params::mergeGap),
-                BlockState.CODEC.optionalFieldOf("foundation").forGetter(Params::foundation),
-                Codec.intRange(0, 256).optionalFieldOf("foundation_depth", 64).forGetter(Params::foundationDepth),
-                Codec.intRange(0, 100_000).optionalFieldOf("tunnel_margin", 8).forGetter(Params::tunnelMargin),
-                Codec.intRange(0, 256).optionalFieldOf("connect_gap", 3).forGetter(Params::connectGap)
+                StrictFields.optional(Codec.intRange(0, 256), "track_z", 4).forGetter(Params::trackZ),
+                StrictFields.optional(Codec.intRange(0, 64), "track_y", 1).forGetter(Params::trackY),
+                StrictFields.optional(Codec.intRange(0, 64), "top_track_y", 1).forGetter(Params::topTrackY),
+                StrictFields.optional(Codec.intRange(1, 256), "min_depth", 5).forGetter(Params::minDepth),
+                StrictFields.optional(Codec.intRange(1, 256), "min_height", 6).forGetter(Params::minHeight),
+                StrictFields.optional(Codec.intRange(1, 100_000), "min_length", 12).forGetter(Params::minLength),
+                StrictFields.optional(Codec.intRange(1, 100_000), "max_length", 160).forGetter(Params::maxLength),
+                StrictFields.optional(Codec.intRange(0, 100_000), "min_gap", 96).forGetter(Params::minGap),
+                StrictFields.optional(Codec.intRange(0, 256), "merge_gap", 4).forGetter(Params::mergeGap),
+                StrictFields.optional(BlockState.CODEC, "foundation").forGetter(Params::foundation),
+                StrictFields.optional(Codec.intRange(0, 256), "foundation_depth", 64).forGetter(Params::foundationDepth),
+                StrictFields.optional(Codec.intRange(0, 100_000), "tunnel_margin", 8).forGetter(Params::tunnelMargin),
+                StrictFields.optional(Codec.intRange(0, 256), "connect_gap", 3).forGetter(Params::connectGap)
         ).apply(i, Params::new));
     }
 
@@ -135,10 +136,10 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
      * come from the default.
      */
     public record Tiles(Parts parts, Params params, List<Parts> variants) {
-        static final Codec<Tiles> CODEC = RecordCodecBuilder.create(i -> i.group(
+        static final Codec<Tiles> CODEC = StrictFields.record(i -> i.group(
                 Parts.MAP_CODEC.forGetter(Tiles::parts),
                 Params.MAP_CODEC.forGetter(Tiles::params),
-                Parts.CODEC.listOf().optionalFieldOf("variants", List.of()).forGetter(Tiles::variants)
+                StrictFields.optional(Parts.CODEC.listOf(), "variants", List.of()).forGetter(Tiles::variants)
         ).apply(i, Tiles::new));
 
         /** The variant for a uniform roll in [0, 1), missing parts filled from the default. */
@@ -221,13 +222,13 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
      */
     public record CoverLayer(BlockState state, float chance, int reach, BiomeFilter biomes, BiomeFilter excludeBiomes,
                              boolean insideTrainSpace) {
-        static final Codec<CoverLayer> CODEC = RecordCodecBuilder.create(i -> i.group(
+        static final Codec<CoverLayer> CODEC = StrictFields.record(i -> i.group(
                 BlockState.CODEC.fieldOf("state").forGetter(CoverLayer::state),
-                Codec.floatRange(0, 1).optionalFieldOf("chance", 1.0F).forGetter(CoverLayer::chance),
-                Codec.intRange(0, 32).optionalFieldOf("reach", 24).forGetter(CoverLayer::reach),
-                BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(CoverLayer::biomes),
-                BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(CoverLayer::excludeBiomes),
-                Codec.BOOL.optionalFieldOf("inside_train_space", false).forGetter(CoverLayer::insideTrainSpace)
+                StrictFields.optional(Codec.floatRange(0, 1), "chance", 1.0F).forGetter(CoverLayer::chance),
+                StrictFields.optional(Codec.intRange(0, 32), "reach", 24).forGetter(CoverLayer::reach),
+                StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(CoverLayer::biomes),
+                StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(CoverLayer::excludeBiomes),
+                StrictFields.optional(Codec.BOOL, "inside_train_space", false).forGetter(CoverLayer::insideTrainSpace)
         ).apply(i, CoverLayer::new));
     }
 
@@ -235,19 +236,19 @@ public record RailStyle(int priority, int weight, BiomeFilter biomes, BiomeFilte
     private static final Bridge DEFAULT_BRIDGE = new Bridge(Blocks.STONE_BRICKS.defaultBlockState(), Blocks.STONE_BRICKS.defaultBlockState(), Optional.empty());
     private static final Tunnel DEFAULT_TUNNEL = new Tunnel(2, 5, Optional.empty(), Optional.empty());
 
-    public static final Codec<RailStyle> CODEC = RecordCodecBuilder.create(i -> i.group(
-            Codec.INT.optionalFieldOf("priority", 0).forGetter(RailStyle::priority),
-            Codec.intRange(1, 10_000).optionalFieldOf("weight", 1).forGetter(RailStyle::weight),
-            BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(RailStyle::biomes),
-            BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(RailStyle::excludeBiomes),
-            Bed.CODEC.optionalFieldOf("bed", DEFAULT_BED).forGetter(RailStyle::bed),
-            Bridge.CODEC.optionalFieldOf("bridge", DEFAULT_BRIDGE).forGetter(RailStyle::bridge),
-            Tunnel.CODEC.optionalFieldOf("tunnel", DEFAULT_TUNNEL).forGetter(RailStyle::tunnel),
-            Tiles.CODEC.optionalFieldOf("cut_cover").forGetter(RailStyle::cutCover),
-            Tiles.CODEC.optionalFieldOf("bridge_structures").forGetter(RailStyle::bridgeTiles),
-            Tiles.CODEC.optionalFieldOf("tunnel_structures").forGetter(RailStyle::tunnelTiles),
-            CoverLayer.CODEC.optionalFieldOf("cover_layer").forGetter(RailStyle::coverLayer),
-            RailAddition.CODEC.listOf().optionalFieldOf("additions", List.of()).forGetter(RailStyle::additions)
+    public static final Codec<RailStyle> CODEC = StrictFields.record(i -> i.group(
+            StrictFields.optional(Codec.INT, "priority", 0).forGetter(RailStyle::priority),
+            StrictFields.optional(Codec.intRange(1, 10_000), "weight", 1).forGetter(RailStyle::weight),
+            StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(RailStyle::biomes),
+            StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(RailStyle::excludeBiomes),
+            StrictFields.optional(Bed.CODEC, "bed", DEFAULT_BED).forGetter(RailStyle::bed),
+            StrictFields.optional(Bridge.CODEC, "bridge", DEFAULT_BRIDGE).forGetter(RailStyle::bridge),
+            StrictFields.optional(Tunnel.CODEC, "tunnel", DEFAULT_TUNNEL).forGetter(RailStyle::tunnel),
+            StrictFields.optional(Tiles.CODEC, "cut_cover").forGetter(RailStyle::cutCover),
+            StrictFields.optional(Tiles.CODEC, "bridge_structures").forGetter(RailStyle::bridgeTiles),
+            StrictFields.optional(Tiles.CODEC, "tunnel_structures").forGetter(RailStyle::tunnelTiles),
+            StrictFields.optional(CoverLayer.CODEC, "cover_layer").forGetter(RailStyle::coverLayer),
+            StrictFields.optional(RailAddition.CODEC.listOf(), "additions", List.of()).forGetter(RailStyle::additions)
     ).apply(i, RailStyle::new));
 
     /** The style used where no datapack style matches: the line definition's own blocks. */

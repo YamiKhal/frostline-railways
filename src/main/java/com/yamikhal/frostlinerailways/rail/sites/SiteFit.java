@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.sites;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -22,11 +23,11 @@ import java.util.Optional;
 public record SiteFit(Optional<String> facing, Direction front, int maxSlope, boolean allowWater, boolean visible) {
 
     public static final MapCodec<SiteFit> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-            Codec.STRING.optionalFieldOf("facing").forGetter(SiteFit::facing),
-            Direction.CODEC.optionalFieldOf("front", Direction.SOUTH).forGetter(SiteFit::front),
-            Codec.intRange(0, 512).optionalFieldOf("max_slope", 8).forGetter(SiteFit::maxSlope),
-            Codec.BOOL.optionalFieldOf("allow_water", false).forGetter(SiteFit::allowWater),
-            Codec.BOOL.optionalFieldOf("visible", true).forGetter(SiteFit::visible)
+            StrictFields.optional(StrictFields.oneOf("track", "away", "along", "station", "core", "random"), "facing").forGetter(SiteFit::facing),
+            StrictFields.optional(Direction.CODEC, "front", Direction.SOUTH).forGetter(SiteFit::front),
+            StrictFields.optional(Codec.intRange(0, 512), "max_slope", 8).forGetter(SiteFit::maxSlope),
+            StrictFields.optional(Codec.BOOL, "allow_water", false).forGetter(SiteFit::allowWater),
+            StrictFields.optional(Codec.BOOL, "visible", true).forGetter(SiteFit::visible)
     ).apply(i, SiteFit::new));
 
     public String facingOr(String fallback) {

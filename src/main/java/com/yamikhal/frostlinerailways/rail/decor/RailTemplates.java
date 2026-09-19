@@ -135,6 +135,28 @@ public final class RailTemplates {
         return id;
     }
 
+    /** Every template file an id stands for: itself (if it is a file) and all its numbered variations, recursively. */
+    public static List<ResourceLocation> files(MinecraftServer server, ResourceLocation id) {
+        List<ResourceLocation> out = new ArrayList<>();
+        if (server == null) {
+            return out;
+        }
+        Map<ResourceLocation, Node> index = index(server);
+        java.util.ArrayDeque<ResourceLocation> todo = new java.util.ArrayDeque<>(List.of(id));
+        while (!todo.isEmpty()) {
+            ResourceLocation next = todo.pop();
+            Node node = index.get(next);
+            if (node == null) {
+                continue;
+            }
+            if (node.file()) {
+                out.add(next);
+            }
+            todo.addAll(node.children());
+        }
+        return out;
+    }
+
     private static Map<ResourceLocation, Node> index(MinecraftServer server) {
         Map<ResourceLocation, Node> current = names;
         if (current != null) {

@@ -18,8 +18,8 @@ import java.util.Map;
  * regenerates it (structure, start chunk, seed), each station's district and building override, and the boxes no
  * other structure may come near (station footprints, rail sites). Immutable; safe on any thread.
  *
- * {@code owners} are the objects the plan was made from (layout, datapack entry lists, the railSites toggle): the
- * plan is reused while they are the same instances.
+ * {@code owners} are what the plan was made from: layout and datapack entry lists (same instances) and the settings
+ * it reads (same values). The plan is reused while they match.
  */
 public final class SitePlan {
 
@@ -82,7 +82,10 @@ public final class SitePlan {
             return false;
         }
         for (int i = 0; i < owners.length; i++) {
-            if (current[i] != owners[i]) {
+            Object a = current[i];
+            Object b = owners[i];
+            boolean value = a instanceof Number || a instanceof Boolean;
+            if (value ? !a.equals(b) : a != b) {
                 return false;
             }
         }

@@ -46,6 +46,22 @@ public final class BiomeFilter {
         return biome.unwrapKey().map(key -> ids.contains(key.location())).orElse(false);
     }
 
+    /** Entries that name no registered biome or no existing biome tag (typos match nothing, silently). */
+    public List<String> unknownIn(net.minecraft.core.Registry<Biome> registry) {
+        List<String> unknown = new ArrayList<>();
+        for (TagKey<Biome> tag : tags) {
+            if (registry.getTag(tag).isEmpty()) {
+                unknown.add("#" + tag.location());
+            }
+        }
+        for (ResourceLocation id : ids) {
+            if (!registry.containsKey(id)) {
+                unknown.add(id.toString());
+            }
+        }
+        return unknown;
+    }
+
     /** Whitelist (empty = every biome) minus blacklist. */
     public static boolean allows(BiomeFilter whitelist, BiomeFilter blacklist, Holder<Biome> biome) {
         return (whitelist.isEmpty() || whitelist.matches(biome)) && !blacklist.matches(biome);

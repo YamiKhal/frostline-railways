@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.decor;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,8 +33,8 @@ public record RailAddition(BiomeFilter biomes, BiomeFilter excludeBiomes, List<S
                            List<Placement> blocks, String replace, Optional<Scatter> scatter) {
 
     public record Placement(List<Integer> at, BlockState state) {
-        public static final Codec<Placement> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.INT.listOf().optionalFieldOf("at", List.of(0, 0, 0)).forGetter(Placement::at),
+        public static final Codec<Placement> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(Codec.INT.listOf(), "at", List.of(0, 0, 0)).forGetter(Placement::at),
                 BlockState.CODEC.fieldOf("state").forGetter(Placement::state)
         ).apply(i, Placement::new));
 
@@ -51,34 +52,34 @@ public record RailAddition(BiomeFilter biomes, BiomeFilter excludeBiomes, List<S
     }
 
     public record WeightedState(BlockState state, int weight) {
-        public static final Codec<WeightedState> CODEC = RecordCodecBuilder.create(i -> i.group(
+        public static final Codec<WeightedState> CODEC = StrictFields.record(i -> i.group(
                 BlockState.CODEC.fieldOf("state").forGetter(WeightedState::state),
-                Codec.intRange(1, 10_000).optionalFieldOf("weight", 1).forGetter(WeightedState::weight)
+                StrictFields.optional(Codec.intRange(1, 10_000), "weight", 1).forGetter(WeightedState::weight)
         ).apply(i, WeightedState::new));
     }
 
     public record Scatter(float chance, int reach, List<WeightedState> states) {
-        public static final Codec<Scatter> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Codec.floatRange(0, 1).optionalFieldOf("chance", 0.25F).forGetter(Scatter::chance),
-                Codec.intRange(1, 8).optionalFieldOf("reach", 2).forGetter(Scatter::reach),
+        public static final Codec<Scatter> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(Codec.floatRange(0, 1), "chance", 0.25F).forGetter(Scatter::chance),
+                StrictFields.optional(Codec.intRange(1, 8), "reach", 2).forGetter(Scatter::reach),
                 WeightedState.CODEC.listOf().fieldOf("states").forGetter(Scatter::states)
         ).apply(i, Scatter::new));
     }
 
-    public static final Codec<RailAddition> CODEC = RecordCodecBuilder.create(i -> i.group(
-            BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(RailAddition::biomes),
-            BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(RailAddition::excludeBiomes),
-            Codec.STRING.listOf().optionalFieldOf("where", List.of()).forGetter(RailAddition::where),
-            Codec.STRING.listOf().optionalFieldOf("pieces", List.of("straight")).forGetter(RailAddition::pieces),
-            Codec.intRange(1, 100_000).optionalFieldOf("spacing", 16).forGetter(RailAddition::spacing),
-            Codec.INT.optionalFieldOf("phase", 0).forGetter(RailAddition::phase),
-            Codec.floatRange(0, 1).optionalFieldOf("chance", 1.0F).forGetter(RailAddition::chance),
-            Codec.STRING.optionalFieldOf("side", "center").forGetter(RailAddition::side),
-            Codec.intRange(0, 32).optionalFieldOf("offset", 0).forGetter(RailAddition::offset),
-            Codec.intRange(-32, 32).optionalFieldOf("height", 0).forGetter(RailAddition::height),
-            Placement.CODEC.listOf().optionalFieldOf("blocks", List.of()).forGetter(RailAddition::blocks),
-            Codec.STRING.optionalFieldOf("replace", "air").forGetter(RailAddition::replace),
-            Scatter.CODEC.optionalFieldOf("scatter").forGetter(RailAddition::scatter)
+    public static final Codec<RailAddition> CODEC = StrictFields.record(i -> i.group(
+            StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(RailAddition::biomes),
+            StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(RailAddition::excludeBiomes),
+            StrictFields.optional(StrictFields.oneOf("open", "cut", "tunnel", "bridge", "portal", "south_end", "north_end").listOf(), "where", List.of()).forGetter(RailAddition::where),
+            StrictFields.optional(StrictFields.oneOf("straight", "bend", "ramp", "shift").listOf(), "pieces", List.of("straight")).forGetter(RailAddition::pieces),
+            StrictFields.optional(Codec.intRange(1, 100_000), "spacing", 16).forGetter(RailAddition::spacing),
+            StrictFields.optional(Codec.INT, "phase", 0).forGetter(RailAddition::phase),
+            StrictFields.optional(Codec.floatRange(0, 1), "chance", 1.0F).forGetter(RailAddition::chance),
+            StrictFields.optional(StrictFields.oneOf("center", "east", "west", "both", "left", "right"), "side", "center").forGetter(RailAddition::side),
+            StrictFields.optional(Codec.intRange(0, 32), "offset", 0).forGetter(RailAddition::offset),
+            StrictFields.optional(Codec.intRange(-32, 32), "height", 0).forGetter(RailAddition::height),
+            StrictFields.optional(Placement.CODEC.listOf(), "blocks", List.of()).forGetter(RailAddition::blocks),
+            StrictFields.optional(StrictFields.oneOf("air", "any"), "replace", "air").forGetter(RailAddition::replace),
+            StrictFields.optional(Scatter.CODEC, "scatter").forGetter(RailAddition::scatter)
     ).apply(i, RailAddition::new));
 
     /** Sides as x signs: east +1, west -1. */

@@ -72,7 +72,16 @@ public final class RailLayoutService {
         dimension = level.dimension();
         definition = def;
         RailLayoutService.level = level;
-        future = CompletableFuture.supplyAsync(() -> loadOrBuild(level, def, lineId.toString(), hash, file, rebuild), EXECUTOR);
+        CompletableFuture<RailLayout> started = CompletableFuture.supplyAsync(() -> loadOrBuild(level, def, lineId.toString(), hash, file, rebuild), EXECUTOR);
+        future = started;
+        // plan the structures along the line right away on this thread, so worldgen threads rarely wait for it (§A8.15)
+        started.thenRunAsync(() -> {
+            try {
+                com.yamikhal.frostlinerailways.rail.sites.RailSites.plan(level.getChunkSource().randomState());
+            } catch (RuntimeException e) {
+                LOGGER.error("[FrostlineRailways] planning the structures along the line failed; retried on first use", e);
+            }
+        }, EXECUTOR);
         return true;
     }
 
@@ -142,5 +151,6 @@ public final class RailLayoutService {
         dimension = null;
         definition = null;
         level = null;
+        com.yamikhal.frostlinerailways.rail.sites.RailSites.clear();
     }
 }

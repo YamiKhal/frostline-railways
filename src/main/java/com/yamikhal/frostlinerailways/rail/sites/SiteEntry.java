@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.sites;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.datafixers.util.Either;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -18,11 +19,11 @@ import java.util.List;
  */
 public record SiteEntry(ResourceLocation structure, int weight, BiomeFilter biomes, BiomeFilter excludeBiomes) {
 
-    private static final Codec<SiteEntry> FULL = RecordCodecBuilder.create(i -> i.group(
+    private static final Codec<SiteEntry> FULL = StrictFields.record(i -> i.group(
             ResourceLocation.CODEC.fieldOf("structure").forGetter(SiteEntry::structure),
-            Codec.intRange(0, 10_000).optionalFieldOf("weight", 1).forGetter(SiteEntry::weight),
-            BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(SiteEntry::biomes),
-            BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(SiteEntry::excludeBiomes)
+            StrictFields.optional(Codec.intRange(0, 10_000), "weight", 1).forGetter(SiteEntry::weight),
+            StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(SiteEntry::biomes),
+            StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(SiteEntry::excludeBiomes)
     ).apply(i, SiteEntry::new));
 
     public static final Codec<SiteEntry> CODEC = Codec.either(ResourceLocation.CODEC, FULL).xmap(

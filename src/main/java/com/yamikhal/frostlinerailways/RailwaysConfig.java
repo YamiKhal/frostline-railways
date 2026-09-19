@@ -144,9 +144,9 @@ public final class RailwaysConfig {
                 .define("railSites", true);
         EXCLUSION = b.comment("Drop structures (from any mod) that would generate on or next to the track, its stations or a rail site.")
                 .define("exclusion", true);
-        CLEARANCE = b.comment("Blocks beyond the edge of the track bed where no structure may stand (at the heights the rail works on).")
+        CLEARANCE = b.comment("Blocks beyond the edge of the rail works (bed, cut slopes, berms, cleared strip, bridge and tunnel templates) where no structure may stand, at the heights the rail works on.")
                 .defineInRange("clearance", 8, 0, 128);
-        AVOID_MARGIN = b.comment("Blocks beyond the edge of the track bed kept free of structures tagged #frostline:rail/avoid (at every height).")
+        AVOID_MARGIN = b.comment("Blocks beyond the edge of the rail works kept free of structures tagged #frostline:rail/avoid, at every height.")
                 .defineInRange("avoidMargin", 64, 0, 512);
         SITE_MARGIN = b.comment("Blocks kept free around every station and rail site: other structures closer than this are dropped.")
                 .defineInRange("siteMargin", 8, 0, 128);

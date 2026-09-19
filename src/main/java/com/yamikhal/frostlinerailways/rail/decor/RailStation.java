@@ -1,5 +1,6 @@
 package com.yamikhal.frostlinerailways.rail.decor;
 
+import com.yamikhal.frostlinerailways.StrictFields;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -38,14 +39,14 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
     public record Where(BiomeFilter biomes, BiomeFilter excludeBiomes, int spacing, int firstAt, float chance,
                         boolean spawn, int length, String side) {
         static final MapCodec<Where> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                BiomeFilter.CODEC.optionalFieldOf("biomes", BiomeFilter.NONE).forGetter(Where::biomes),
-                BiomeFilter.CODEC.optionalFieldOf("exclude_biomes", BiomeFilter.NONE).forGetter(Where::excludeBiomes),
-                Codec.intRange(256, 1_000_000).optionalFieldOf("spacing", 3000).forGetter(Where::spacing),
-                Codec.intRange(0, 1_000_000).optionalFieldOf("first_at", 400).forGetter(Where::firstAt),
-                Codec.floatRange(0, 1).optionalFieldOf("chance", 1.0F).forGetter(Where::chance),
-                Codec.BOOL.optionalFieldOf("spawn", false).forGetter(Where::spawn),
-                Codec.intRange(8, 128).optionalFieldOf("length", 32).forGetter(Where::length),
-                Codec.STRING.optionalFieldOf("side", "alternate").forGetter(Where::side)
+                StrictFields.optional(BiomeFilter.CODEC, "biomes", BiomeFilter.NONE).forGetter(Where::biomes),
+                StrictFields.optional(BiomeFilter.CODEC, "exclude_biomes", BiomeFilter.NONE).forGetter(Where::excludeBiomes),
+                StrictFields.optional(Codec.intRange(256, 1_000_000), "spacing", 3000).forGetter(Where::spacing),
+                StrictFields.optional(Codec.intRange(0, 1_000_000), "first_at", 400).forGetter(Where::firstAt),
+                StrictFields.optional(Codec.floatRange(0, 1), "chance", 1.0F).forGetter(Where::chance),
+                StrictFields.optional(Codec.BOOL, "spawn", false).forGetter(Where::spawn),
+                StrictFields.optional(Codec.intRange(8, 128), "length", 32).forGetter(Where::length),
+                StrictFields.optional(StrictFields.oneOf("east", "west", "alternate", "left", "right"), "side", "alternate").forGetter(Where::side)
         ).apply(i, Where::new));
     }
 
@@ -60,14 +61,14 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
      */
     public record Template(ResourceLocation id, int trackZ, int trackY, Optional<BlockState> foundation, int foundationDepth,
                            boolean clear, int weight) {
-        public static final Codec<Template> CODEC = RecordCodecBuilder.create(i -> i.group(
+        public static final Codec<Template> CODEC = StrictFields.record(i -> i.group(
                 ResourceLocation.CODEC.fieldOf("id").forGetter(Template::id),
                 Codec.intRange(0, 256).fieldOf("track_z").forGetter(Template::trackZ),
-                Codec.intRange(0, 64).optionalFieldOf("track_y", 1).forGetter(Template::trackY),
-                BlockState.CODEC.optionalFieldOf("foundation").forGetter(Template::foundation),
-                Codec.intRange(0, 64).optionalFieldOf("foundation_depth", 12).forGetter(Template::foundationDepth),
-                Codec.BOOL.optionalFieldOf("clear", true).forGetter(Template::clear),
-                Codec.intRange(0, 1_000_000).optionalFieldOf("weight", 1).forGetter(Template::weight)
+                StrictFields.optional(Codec.intRange(0, 64), "track_y", 1).forGetter(Template::trackY),
+                StrictFields.optional(BlockState.CODEC, "foundation").forGetter(Template::foundation),
+                StrictFields.optional(Codec.intRange(0, 64), "foundation_depth", 12).forGetter(Template::foundationDepth),
+                StrictFields.optional(Codec.BOOL, "clear", true).forGetter(Template::clear),
+                StrictFields.optional(Codec.intRange(0, 1_000_000), "weight", 1).forGetter(Template::weight)
         ).apply(i, Template::new));
     }
 
@@ -79,13 +80,13 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
     public record Look(int width, int gap, int clearance, BlockState platform, Optional<BlockState> edge,
                        Optional<Template> template, List<Template> variants) {
         static final MapCodec<Look> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                Codec.intRange(1, 8).optionalFieldOf("width", 3).forGetter(Look::width),
-                Codec.intRange(1, 8).optionalFieldOf("gap", 2).forGetter(Look::gap),
-                Codec.intRange(2, 12).optionalFieldOf("clearance", 4).forGetter(Look::clearance),
-                BlockState.CODEC.optionalFieldOf("platform", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Look::platform),
-                BlockState.CODEC.optionalFieldOf("edge").forGetter(Look::edge),
-                Template.CODEC.optionalFieldOf("template").forGetter(Look::template),
-                Template.CODEC.listOf().optionalFieldOf("variants", List.of()).forGetter(Look::variants)
+                StrictFields.optional(Codec.intRange(1, 8), "width", 3).forGetter(Look::width),
+                StrictFields.optional(Codec.intRange(1, 8), "gap", 2).forGetter(Look::gap),
+                StrictFields.optional(Codec.intRange(2, 12), "clearance", 4).forGetter(Look::clearance),
+                StrictFields.optional(BlockState.CODEC, "platform", Blocks.STONE_BRICKS.defaultBlockState()).forGetter(Look::platform),
+                StrictFields.optional(BlockState.CODEC, "edge").forGetter(Look::edge),
+                StrictFields.optional(Template.CODEC, "template").forGetter(Look::template),
+                StrictFields.optional(Template.CODEC.listOf(), "variants", List.of()).forGetter(Look::variants)
         ).apply(i, Look::new));
 
         /** The template for a uniform roll in [0, 1), by weight among template and variants; empty for a plain platform. */
@@ -99,9 +100,9 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
      * field (RAILWAYS.md §A8.15) replaces the station's own building with one of these.
      */
     public record Templates(Optional<Template> template, List<Template> variants) {
-        public static final Codec<Templates> CODEC = RecordCodecBuilder.create(i -> i.group(
-                Template.CODEC.optionalFieldOf("template").forGetter(Templates::template),
-                Template.CODEC.listOf().optionalFieldOf("variants", List.of()).forGetter(Templates::variants)
+        public static final Codec<Templates> CODEC = StrictFields.record(i -> i.group(
+                StrictFields.optional(Template.CODEC, "template").forGetter(Templates::template),
+                StrictFields.optional(Template.CODEC.listOf(), "variants", List.of()).forGetter(Templates::variants)
         ).apply(i, Templates::new));
 
         public Optional<Template> pick(double roll) {
@@ -134,18 +135,18 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
 
     public record Service(boolean stationBlock, String direction, String name, Optional<ResourceLocation> train) {
         static final MapCodec<Service> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
-                Codec.BOOL.optionalFieldOf("station_block", true).forGetter(Service::stationBlock),
-                Codec.STRING.optionalFieldOf("direction", "both").forGetter(Service::direction),
-                Codec.STRING.optionalFieldOf("name", "Station {n}").forGetter(Service::name),
-                ResourceLocation.CODEC.optionalFieldOf("train").forGetter(Service::train)
+                StrictFields.optional(Codec.BOOL, "station_block", true).forGetter(Service::stationBlock),
+                StrictFields.optional(StrictFields.oneOf("north", "south", "both"), "direction", "both").forGetter(Service::direction),
+                StrictFields.optional(Codec.STRING, "name", "Station {n}").forGetter(Service::name),
+                StrictFields.optional(ResourceLocation.CODEC, "train").forGetter(Service::train)
         ).apply(i, Service::new));
     }
 
-    public static final Codec<RailStation> CODEC = RecordCodecBuilder.create(i -> i.group(
+    public static final Codec<RailStation> CODEC = StrictFields.record(i -> i.group(
             Where.CODEC.forGetter(RailStation::where),
             Look.CODEC.forGetter(RailStation::look),
             Service.CODEC.forGetter(RailStation::service),
-            RailAddition.CODEC.listOf().optionalFieldOf("additions", List.of()).forGetter(RailStation::additions)
+            StrictFields.optional(RailAddition.CODEC.listOf(), "additions", List.of()).forGetter(RailStation::additions)
     ).apply(i, RailStation::new));
 
     public int length() {
