@@ -10,6 +10,7 @@ import com.yamikhal.frostlinerailways.rail.decor.RailTemplates;
 import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.decor.StructurePlanner;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
+import com.yamikhal.frostlinerailways.rail.sites.RailSites;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -258,12 +259,13 @@ public final class Decorator {
     private static void station(WorldGenLevel level, ChunkPos chunk, RailContext ctx, StationPlanner.Site site, Envelope envelope,
                                 BlockPos.MutableBlockPos pos) {
         RailStation def = site.def();
-        long salt = site.id().hashCode();
-        java.util.Optional<RailStation.Template> chosen = def.look().pick(ctx.random(salt, site.zCentre(), 29));
-        ResourceLocation file = chosen.map(t -> RailTemplates.pick(level.getServer(), t.id(), ctx.random(salt, site.zCentre(), 31))).orElse(null);
+        // a station district may replace the building (RAILWAYS.md §A8.15); platform, stops and train stay the station's
+        StationPlanner.Building building = StationPlanner.building(ctx, level.getServer(), site,
+                RailSites.stationOverride(ctx.randomState(), site));
+        ResourceLocation file = building.file();
         RailTemplates.Structure structure = file == null ? null : RailTemplates.structure(level.getServer(), file);
         if (structure != null) {
-            RailStation.Template spec = chosen.get();
+            RailStation.Template spec = building.spec().get();
             // station templates run from the site's north end, lower template z outward on the site's side
             TemplatePlacer.place(level, chunk, structure, site.trackX(), site.bedY(), spec.trackZ(), spec.trackY(),
                     site.zNorth(), 1, site.sign(), spec.clear(), spec.foundation(), spec.foundationDepth(), false, envelope, pos);

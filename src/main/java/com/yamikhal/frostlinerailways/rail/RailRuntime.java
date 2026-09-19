@@ -9,6 +9,8 @@ import com.yamikhal.frostlinerailways.rail.decor.StationPlanner;
 import com.yamikhal.frostlinerailways.rail.graph.RailGraphService;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayout;
 import com.yamikhal.frostlinerailways.rail.layout.RailLayoutService;
+import com.yamikhal.frostlinerailways.rail.sites.RailSites;
+import com.yamikhal.frostlinerailways.rail.sites.SitePlan;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -17,6 +19,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -90,6 +93,10 @@ public final class RailRuntime {
                         .then(Commands.literal("info").executes(c -> info(c.getSource())))
                         .then(Commands.literal("where").executes(c -> where(c.getSource())))
                         .then(Commands.literal("stations").executes(c -> stations(c.getSource())))
+                        .then(Commands.literal("sites").executes(c -> sites(c.getSource()))
+                                .then(Commands.literal("tp")
+                                        .then(Commands.argument("number", IntegerArgumentType.integer(1))
+                                                .executes(c -> siteTp(c.getSource(), IntegerArgumentType.getInteger(c, "number"))))))
                         .then(Commands.literal("tp")
                                 .then(Commands.argument("blocks_from_south_end", IntegerArgumentType.integer(0))
                                         .executes(c -> tp(c.getSource(), IntegerArgumentType.getInteger(c, "blocks_from_south_end")))))
@@ -163,13 +170,69 @@ public final class RailRuntime {
             return 0;
         }
         List<StationPlanner.Site> sites = StationPlanner.sites(new RailContext(level, layout, RailLayoutService.definition()));
+        SitePlan plan = RailSites.plan();
         StringBuilder text = new StringBuilder(sites.size() + " stations, south to north:");
         for (StationPlanner.Site site : sites) {
+            SitePlan.StationInfo info = plan == null ? null : plan.station(site);
             text.append("\n  ").append(site.name()).append(site.def().where().spawn() ? " (spawn)" : "")
                     .append(": ").append(layout.zSouthEnd() - site.zCentre()).append(" blocks from the south end, x ")
-                    .append(site.trackX()).append(" y ").append(site.bedY()).append(" z ").append(site.zCentre());
+                    .append(site.trackX()).append(" y ").append(site.bedY()).append(" z ").append(site.zCentre())
+                    .append(site.sign() > 0 ? ", east" : ", west");
+            if (info != null && info.district() != null) {
+                text.append(", district ").append(info.district()).append(info.override() != null ? " (own building)" : "");
+            }
         }
         return say(source, text.toString());
+    }
+
+    /** Every planned rail site (RAILWAYS.md A8.15), numbered for /frostline rail sites tp. */
+    private static int sites(CommandSourceStack source) {
+        RailLayout layout = layout(source);
+        if (layout == null) {
+            return 0;
+        }
+        SitePlan plan = RailSites.plan();
+        if (plan == null) {
+            source.sendFailure(Component.literal("No site plan for this world."));
+            return 0;
+        }
+        List<SitePlan.Placed> placed = plan.placed();
+        StringBuilder text = new StringBuilder(placed.size() + " rail sites (planned in " + plan.millis + " ms; "
+                + RailSites.dropped() + " other structures dropped near the line so far):");
+        for (int i = 0; i < placed.size(); i++) {
+            SitePlan.Placed p = placed.get(i);
+            BoundingBox box = p.box();
+            String from = switch (p.kind()) {
+                case LINE -> "the track";
+                case CORE -> "the station";
+                case OUTER -> "the core";
+            };
+            text.append("\n  ").append(i + 1).append(". ").append(p.kind().name().toLowerCase(java.util.Locale.ROOT)).append(' ')
+                    .append(p.structure().location()).append(" (").append(p.source()).append(") at x ")
+                    .append((box.minX() + box.maxX()) / 2).append(" z ").append((box.minZ() + box.maxZ()) / 2)
+                    .append(p.side() > 0 ? ", east, " : ", west, ").append(p.distance()).append(" blocks from ").append(from)
+                    .append(p.facingMet() ? "" : ", facing not met");
+        }
+        if (!plan.failures.isEmpty()) {
+            text.append("\nRejected spots by reason: ").append(plan.failures);
+        }
+        return say(source, text.toString());
+    }
+
+    private static int siteTp(CommandSourceStack source, int number) throws CommandSyntaxException {
+        SitePlan plan = RailSites.plan();
+        ServerLevel level = RailLayoutService.level();
+        if (plan == null || level == null || number > plan.placed().size()) {
+            source.sendFailure(Component.literal("No rail site " + number + " (see /frostline rail sites)."));
+            return 0;
+        }
+        BoundingBox box = plan.placed().get(number - 1).box();
+        int x = (box.minX() + box.maxX()) / 2;
+        int z = (box.minZ() + box.maxZ()) / 2;
+        int y = Math.max(box.maxY() + 2, level.getChunkSource().getGenerator().getBaseHeight(x, z, Heightmap.Types.MOTION_BLOCKING,
+                level, level.getChunkSource().randomState()) + 2);
+        source.getPlayerOrException().teleportTo(level, x + 0.5, y, z + 0.5, 0.0F, 30.0F);
+        return 1;
     }
 
     private static int tp(CommandSourceStack source, int blocks) throws CommandSyntaxException {

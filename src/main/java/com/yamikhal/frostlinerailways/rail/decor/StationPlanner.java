@@ -59,6 +59,23 @@ public final class StationPlanner {
     public record Stop(BlockPos pos, boolean northbound, String name) {
     }
 
+    /** The building a station puts up: its template spec and file (after the variation tree); both empty/null for a plain platform. */
+    public record Building(java.util.Optional<RailStation.Template> spec, ResourceLocation file) {
+    }
+
+    /**
+     * The building of a station site, with the same rolls wherever it is asked (Decorator places it, the site plan
+     * measures it). {@code override}: a district's replacement building, or null for the station's own look.
+     */
+    public static Building building(RailContext ctx, net.minecraft.server.MinecraftServer server, Site site, RailStation.Templates override) {
+        long salt = site.id().hashCode();
+        double lookRoll = ctx.random(salt, site.zCentre(), 29);
+        java.util.Optional<RailStation.Template> chosen = override != null && !override.isEmpty()
+                ? override.pick(lookRoll) : site.def().look().pick(lookRoll);
+        ResourceLocation file = chosen.map(t -> RailTemplates.pick(server, t.id(), ctx.random(salt, site.zCentre(), 31))).orElse(null);
+        return new Building(chosen, file);
+    }
+
     private static final int STOP_INSET = 2;
     private static final int MARGIN = 4;
     private static final int SEARCH_STEP = 8;

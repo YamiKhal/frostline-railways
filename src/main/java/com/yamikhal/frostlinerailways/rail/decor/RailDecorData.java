@@ -6,6 +6,8 @@ import com.google.gson.JsonElement;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
+import com.yamikhal.frostlinerailways.rail.sites.RailDistrict;
+import com.yamikhal.frostlinerailways.rail.sites.RailSite;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
@@ -20,7 +22,8 @@ import java.util.TreeMap;
 
 /**
  * Datapack loaders for the line's look: frostline_rail/style, frostline_rail/addition and
- * frostline_rail/station. Entries are kept sorted by id, so every choice made from them is the same
+ * frostline_rail/station, and the structures along it: frostline_rail/site and frostline_rail/district
+ * (RAILWAYS.md §A8.15). Entries are kept sorted by id, so every choice made from them is the same
  * on every run.
  */
 public final class RailDecorData {
@@ -31,6 +34,8 @@ public final class RailDecorData {
     public static final Loader<RailStyle> STYLES = new Loader<>("frostline_rail/style", RailStyle.CODEC);
     public static final Loader<RailAddition> ADDITIONS = new Loader<>("frostline_rail/addition", RailAddition.CODEC);
     public static final Loader<RailStation> STATIONS = new Loader<>("frostline_rail/station", RailStation.CODEC);
+    public static final Loader<RailSite> SITES = new Loader<>("frostline_rail/site", RailSite.CODEC);
+    public static final Loader<RailDistrict> DISTRICTS = new Loader<>("frostline_rail/district", RailDistrict.CODEC);
 
     private RailDecorData() {
     }
@@ -39,6 +44,8 @@ public final class RailDecorData {
         event.addListener(STYLES);
         event.addListener(ADDITIONS);
         event.addListener(STATIONS);
+        event.addListener(SITES);
+        event.addListener(DISTRICTS);
     }
 
     public record Entry<T>(ResourceLocation id, T value) {

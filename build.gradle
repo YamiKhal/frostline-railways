@@ -1,6 +1,7 @@
 plugins {
     id 'eclipse'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.spongepowered.mixin' version '0.7.+'
 }
 
 version = '1.0.0'
@@ -18,6 +19,12 @@ minecraft {
     }
 }
 
+// Mixins into vanilla worldgen (rail sites and the structure exclusion band, RAILWAYS.md A8.15).
+mixin {
+    add sourceSets.main, 'frostline_railways.refmap.json'
+    config 'frostline_railways.mixins.json'
+}
+
 repositories {
     mavenCentral()
     maven { url = 'https://maven.createmod.net' }            // Create, Ponder, Flywheel
@@ -26,6 +33,7 @@ repositories {
 
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.2.20'
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     // Create is optional at runtime too: Frostline Rail's Create code is only reached behind a ModList check.
     compileOnly fg.deobf("com.simibubi.create:create-1.20.1:6.0.8-289:slim") { transitive = false }
@@ -42,7 +50,8 @@ jar {
             'Specification-Version'   : '1',
             'Implementation-Title'    : project.name,
             'Implementation-Version'  : project.jar.archiveVersion,
-            'Implementation-Vendor'   : 'frostline'
+            'Implementation-Vendor'   : 'frostline',
+            'MixinConfigs'            : 'frostline_railways.mixins.json'
         ])
     }
 }

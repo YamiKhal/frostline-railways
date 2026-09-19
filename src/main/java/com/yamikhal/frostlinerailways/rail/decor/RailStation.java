@@ -60,7 +60,7 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
      */
     public record Template(ResourceLocation id, int trackZ, int trackY, Optional<BlockState> foundation, int foundationDepth,
                            boolean clear, int weight) {
-        static final Codec<Template> CODEC = RecordCodecBuilder.create(i -> i.group(
+        public static final Codec<Template> CODEC = RecordCodecBuilder.create(i -> i.group(
                 ResourceLocation.CODEC.fieldOf("id").forGetter(Template::id),
                 Codec.intRange(0, 256).fieldOf("track_z").forGetter(Template::trackZ),
                 Codec.intRange(0, 64).optionalFieldOf("track_y", 1).forGetter(Template::trackY),
@@ -90,22 +90,46 @@ public record RailStation(Where where, Look look, Service service, List<RailAddi
 
         /** The template for a uniform roll in [0, 1), by weight among template and variants; empty for a plain platform. */
         public Optional<Template> pick(double roll) {
-            List<Template> all = new java.util.ArrayList<>();
-            template.ifPresent(all::add);
-            all.addAll(variants);
-            int total = all.stream().mapToInt(t -> Math.max(0, t.weight())).sum();
-            if (all.isEmpty() || total <= 0) {
-                return template;
-            }
-            double r = roll * total;
-            for (Template t : all) {
-                r -= Math.max(0, t.weight());
-                if (r < 0) {
-                    return Optional.of(t);
-                }
-            }
-            return Optional.of(all.get(all.size() - 1));
+            return RailStation.pick(template, variants, roll);
         }
+    }
+
+    /**
+     * Just the building part of a look: {@code template} and {@code variants}. A station district's {@code station}
+     * field (RAILWAYS.md §A8.15) replaces the station's own building with one of these.
+     */
+    public record Templates(Optional<Template> template, List<Template> variants) {
+        public static final Codec<Templates> CODEC = RecordCodecBuilder.create(i -> i.group(
+                Template.CODEC.optionalFieldOf("template").forGetter(Templates::template),
+                Template.CODEC.listOf().optionalFieldOf("variants", List.of()).forGetter(Templates::variants)
+        ).apply(i, Templates::new));
+
+        public Optional<Template> pick(double roll) {
+            return RailStation.pick(template, variants, roll);
+        }
+
+        public boolean isEmpty() {
+            return template.isEmpty() && variants.isEmpty();
+        }
+    }
+
+    /** By weight among template and variants for a uniform roll in [0, 1); empty when there is no template at all. */
+    public static Optional<Template> pick(Optional<Template> template, List<Template> variants, double roll) {
+        List<Template> all = new java.util.ArrayList<>();
+        template.ifPresent(all::add);
+        all.addAll(variants);
+        int total = all.stream().mapToInt(t -> Math.max(0, t.weight())).sum();
+        if (all.isEmpty() || total <= 0) {
+            return template;
+        }
+        double r = roll * total;
+        for (Template t : all) {
+            r -= Math.max(0, t.weight());
+            if (r < 0) {
+                return Optional.of(t);
+            }
+        }
+        return Optional.of(all.get(all.size() - 1));
     }
 
     public record Service(boolean stationBlock, String direction, String name, Optional<ResourceLocation> train) {

@@ -56,11 +56,24 @@ public final class RailContext {
     private static final Map<Integer, RailDecorData.Entry<RailStyle>> SECTION_STYLES = new ConcurrentHashMap<>();
 
     public RailContext(WorldGenLevel level, RailLayout layout, RailLineDef def) {
+        this(level.getSeed(), level.getLevel().getChunkSource().getGenerator(), level.getLevel().getChunkSource().randomState(), layout, def);
+    }
+
+    /** For code that has no WorldGenLevel (structure starts, the site plan): noise only, like everything here. */
+    public RailContext(long seed, ChunkGenerator generator, RandomState random, RailLayout layout, RailLineDef def) {
         this.layout = layout;
         this.def = def;
-        this.seed = level.getSeed();
-        this.generator = level.getLevel().getChunkSource().getGenerator();
-        this.random = level.getLevel().getChunkSource().randomState();
+        this.seed = seed;
+        this.generator = generator;
+        this.random = random;
+    }
+
+    public ChunkGenerator generator() {
+        return generator;
+    }
+
+    public RandomState randomState() {
+        return random;
     }
 
     /** The row at z, or null outside the line. */

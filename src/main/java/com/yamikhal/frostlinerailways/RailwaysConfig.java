@@ -46,6 +46,11 @@ public final class RailwaysConfig {
     private static final ForgeConfigSpec.IntValue BRIDGE_FULL_MIN_LENGTH;
     private static final ForgeConfigSpec.IntValue BRIDGE_FULL_MIN_MIDDLES;
     private static final ForgeConfigSpec.IntValue CURVE_MARGIN;
+    private static final ForgeConfigSpec.BooleanValue RAIL_SITES;
+    private static final ForgeConfigSpec.BooleanValue EXCLUSION;
+    private static final ForgeConfigSpec.IntValue CLEARANCE;
+    private static final ForgeConfigSpec.IntValue AVOID_MARGIN;
+    private static final ForgeConfigSpec.IntValue SITE_MARGIN;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -53,7 +58,7 @@ public final class RailwaysConfig {
         b.comment(
                 "Frostline Rail: the railway generated with the world from the seed (RAILWAYS.md).",
                 "Needs Create. The line's shape and look come from the datapack (frostline_rail/).",
-                "Only chunks generated while enabled get track. Commands: /frostline rail info|where|tp|graph|layout"
+                "Only chunks generated while enabled get track. Commands: /frostline rail info|where|stations|sites|tp|graph|layout"
         ).push("frostline_rail");
         RAIL_ENABLED = b.comment("Generate the Frostline railway and build its Create track graph.")
                 .define("enabled", true);
@@ -130,6 +135,21 @@ public final class RailwaysConfig {
         CURVE_MARGIN = b.comment("Rows before and after an S-bend or diagonal shift that are built as curve rows too: tunnel walls and bridge",
                         "decks widen and top_curve parts replace top there, so the widening starts before the curve and ends after it.")
                 .defineInRange("curveMargin", 8, 0, 64);
+        b.pop();
+
+        b.comment("Structures along the line (RAILWAYS.md A8.15, docs/wiki/STRUCTURES.md): rail sites and station districts",
+                "from frostline_rail/site and frostline_rail/district, and the band around the track where no other structure",
+                "may generate. Only affects newly generated chunks.").push("structures");
+        RAIL_SITES = b.comment("Generate the datapack's line sites and station districts.")
+                .define("railSites", true);
+        EXCLUSION = b.comment("Drop structures (from any mod) that would generate on or next to the track, its stations or a rail site.")
+                .define("exclusion", true);
+        CLEARANCE = b.comment("Blocks beyond the edge of the track bed where no structure may stand (at the heights the rail works on).")
+                .defineInRange("clearance", 8, 0, 128);
+        AVOID_MARGIN = b.comment("Blocks beyond the edge of the track bed kept free of structures tagged #frostline:rail/avoid (at every height).")
+                .defineInRange("avoidMargin", 64, 0, 512);
+        SITE_MARGIN = b.comment("Blocks kept free around every station and rail site: other structures closer than this are dropped.")
+                .defineInRange("siteMargin", 8, 0, 128);
         b.pop();
 
         b.pop();
@@ -254,6 +274,26 @@ public final class RailwaysConfig {
 
     public static int curveMargin() {
         return get(CURVE_MARGIN::get, 8);
+    }
+
+    public static boolean railSites() {
+        return get(RAIL_SITES::get, true);
+    }
+
+    public static boolean exclusion() {
+        return get(EXCLUSION::get, true);
+    }
+
+    public static int clearance() {
+        return get(CLEARANCE::get, 8);
+    }
+
+    public static int avoidMargin() {
+        return get(AVOID_MARGIN::get, 64);
+    }
+
+    public static int siteMargin() {
+        return get(SITE_MARGIN::get, 8);
     }
 
     private static <T> T get(Supplier<T> value, T fallback) {

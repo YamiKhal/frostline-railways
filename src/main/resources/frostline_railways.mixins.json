@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "com.yamikhal.frostlinerailways.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "frostline_railways.refmap.json",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "ChunkGeneratorMixin",
+    "StructureMixin"
+  ]
+}

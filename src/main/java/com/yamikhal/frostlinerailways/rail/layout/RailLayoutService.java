@@ -43,6 +43,7 @@ public final class RailLayoutService {
     private static volatile CompletableFuture<RailLayout> future;
     private static volatile ResourceKey<Level> dimension;
     private static volatile RailLineDef definition;
+    private static volatile ServerLevel level;
 
     private RailLayoutService() {
     }
@@ -70,6 +71,7 @@ public final class RailLayoutService {
         String hash = ALGORITHM + "|" + level.getSeed() + "|" + lineId + "|" + def + "|" + RaiseRules.fingerprint();
         dimension = level.dimension();
         definition = def;
+        RailLayoutService.level = level;
         future = CompletableFuture.supplyAsync(() -> loadOrBuild(level, def, lineId.toString(), hash, file, rebuild), EXECUTOR);
         return true;
     }
@@ -118,9 +120,27 @@ public final class RailLayoutService {
         return definition;
     }
 
+    /** The line's level, or null. Only for its generator, random state, registries and templates: never read its chunks here. */
+    public static ServerLevel level() {
+        return level;
+    }
+
+    /**
+     * The layout if {@code random} is the line level's random state (i.e. worldgen for the line's dimension), waiting
+     * for it while it is being built; else null. For code that only has worldgen objects (structure starts).
+     */
+    public static RailLayout layoutFor(net.minecraft.world.level.levelgen.RandomState random) {
+        ServerLevel current = level;
+        if (current == null || random == null || current.getChunkSource().randomState() != random) {
+            return null;
+        }
+        return layout(current.dimension(), true);
+    }
+
     public static void stop() {
         future = null;
         dimension = null;
         definition = null;
+        level = null;
     }
 }
