@@ -109,8 +109,9 @@ public final class RailwaysConfig {
         CLEAR_ABOVE_TRACK = b.comment("Outside tunnels, clear everything above the track bed up to the surface (trees, overhanging",
                         "leaves, cut walls over the track), and loose blocks (leaves, logs, plants, snow) beside it.")
                 .define("clearAboveTrack", true);
-        CLEAR_EXTRA_WIDTH = b.comment("Columns beyond the bed, each side, where loose blocks are cleared up to the surface.")
-                .defineInRange("clearExtraWidth", 3, 0, 8);
+        CLEAR_EXTRA_WIDTH = b.comment("Columns beyond the bed, each side, where loose blocks are cleared up to the surface. 0 = only the bed",
+                        "(trees touching it are removed whole either way).")
+                .defineInRange("clearExtraWidth", 0, 0, 8);
         CUT_COVERS = b.comment("Place styles' cut_cover structures over cuts at least min_depth deep.")
                 .define("cutCovers", true);
         BRIDGE_STRUCTURES = b.comment("Place styles' bridge_structures (start/middle/end, or flat) on bridges.")
